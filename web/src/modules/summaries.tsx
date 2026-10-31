@@ -1,6 +1,7 @@
 import type React from 'react'
 import { Check, FileText, Languages, Library, Mail, Radar, ScrollText, ShieldAlert, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
 import { CONDITION_BY_KEY, rankingLabel } from '../../../shared/criteria'
+import { directionCounts, overallScore } from '../../../shared/directions'
 import type { AppState, Doc } from '../../../shared/types'
 import { az, daysUntil, dayLabel, fmtShort, initials, monthShort, todayISO, urgency, weekday } from '../lib/util'
 
@@ -329,5 +330,72 @@ export function ProfileSummary({ s }: P) {
         {p.conditions.length ? p.conditions.map((k) => <span key={k} className="chip green" title={CONDITION_BY_KEY[k]?.label}>{CONDITION_BY_KEY[k]?.short ?? k}</span>) : <span className="faint">-</span>}
       </ProfRow>
     </>
+  )
+}
+
+export function PositionsSummary({ s }: P) {
+  const open = s.positions.filter((p) => p.status !== 'dismissed')
+  const soon = open.filter((p) => p.deadline && /^\d{4}-\d{2}-\d{2}$/.test(p.deadline) && daysUntil(p.deadline) >= 0 && daysUntil(p.deadline) <= 30).length
+  const portals = new Set(open.map((p) => p.portal)).size
+  return (
+    <>
+      <div className="kpis">
+        <div className="kpi"><div className="n">{open.length}</div><div className="l">Elan</div></div>
+        <div className="kpi"><div className="n">{open.filter((p) => p.status === 'shortlisted' || p.status === 'applying').length}</div><div className="l">Seçilmiş</div></div>
+        <div className="kpi"><div className="n">{soon}</div><div className="l">30 gündə</div></div>
+      </div>
+      <div className="list">
+        {open.length === 0 && <div className="empty">Portallardan (DAAD, jobs.ac.uk, EURAXESS, PhDPortal...) profilinə uyğun PhD elanlarını Talvis tapsın.</div>}
+        {[...open].sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999')).map((p) => (
+          <div key={p.id} className="item">
+            <span className="t" title={p.title}>{p.title}</span>
+            <span className="m">{p.portal}</span>
+            {p.deadline && /^\d{4}-\d{2}-\d{2}$/.test(p.deadline) && <span className={`chip ${urgency(daysUntil(p.deadline))}`}>{fmtShort(p.deadline)}</span>}
+          </div>
+        ))}
+      </div>
+      {portals > 0 && <div className="faint" style={{ fontSize: 10.5, marginTop: 4 }}>{portals} portaldan</div>}
+    </>
+  )
+}
+
+export function InsightsSummary({ s }: P) {
+  return (
+    <div className="list">
+      {s.insights.length === 0 && <div className="empty">Universitet seç: Talvis Reddit-də orada oxuyanların nə dediyini (rəhbərlik, təqaüd, iş yükü) sübutlarla analiz etsin.</div>}
+      {s.insights.map((i) => (
+        <div key={i.id} className="item">
+          <span className="t">{uniName(s, i.universityId) ?? i.subject}</span>
+          <span className="m">{i.postsAnalyzed} post</span>
+          <span className={`chip ${i.sentiment > 0 ? 'green' : i.sentiment < 0 ? 'red' : 'amber'}`}>{i.sentiment > 0 ? '+' : ''}{i.sentiment}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function DirectionsSummary({ s }: P) {
+  const counts = directionCounts(s)
+  return (
+    <div className="list">
+      {s.directions.length === 0 && <div className="empty">NLP, Adaptive learning kimi əsas istiqamətləri əlavə et: Talvis hansının sənə daha uyğun olduğunu sübutla müqayisə etsin.</div>}
+      {s.directions.map((d) => {
+        const score = overallScore(d.analysis?.scores, d.interest)
+        const c = counts[d.id]
+        return (
+          <div key={d.id} className="item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 5 }}>
+            <div className="row">
+              <span style={{ width: 8, height: 8, borderRadius: 4, background: d.color, flexShrink: 0 }} />
+              <span className="t" style={{ fontWeight: 600 }}>{d.name}</span>
+              <span className="m">{c ? `${c.papers} məq · ${c.researchers} təd · ${c.positions} elan` : ''}</span>
+              <span className="chip" style={{ color: d.color, borderColor: d.color }}>{score !== undefined ? `${score}/10` : 'analiz yox'}</span>
+            </div>
+            {score !== undefined && (
+              <span className="scorebar" style={{ '--dc': d.color } as React.CSSProperties}><i style={{ width: `${score * 10}%` }} /></span>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }

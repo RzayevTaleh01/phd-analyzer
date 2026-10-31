@@ -1,11 +1,13 @@
 import { useEffect, type CSSProperties, type FC } from 'react'
 import { X } from 'lucide-react'
 import type { ModuleKey } from '../../../shared/types'
-import { Corners } from '../board/ModuleNode'
+import { Corners } from '../board/ModuleCard'
 import { MODULE_BY_KEY } from '../modules/registry'
 import { useStore } from '../store'
 import { DeadlinesPanel, DocumentsPanel, ProfilePanel, TodayPanel, UniversitiesPanel } from './ApplyPanels'
 import { GapsPanel, GroupsPanel, PapersPanel, PublishPanel, ResearchersPanel, TopicsPanel } from './ResearchPanels'
+import { InsightsPanel, PositionsPanel } from './WebPanels'
+import DirectionsPanel from './DirectionsPanel'
 
 const PANELS: Record<Exclude<ModuleKey, 'core'>, FC> = {
   profile: ProfilePanel,
@@ -19,6 +21,9 @@ const PANELS: Record<Exclude<ModuleKey, 'core'>, FC> = {
   papers: PapersPanel,
   gaps: GapsPanel,
   publish: PublishPanel,
+  positions: PositionsPanel,
+  insights: InsightsPanel,
+  directions: DirectionsPanel,
 }
 
 export default function ModulePanel() {

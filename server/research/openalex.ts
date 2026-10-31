@@ -93,6 +93,14 @@ export async function getWork(id: string): Promise<WorkHit | undefined> {
   }
 }
 
+/** PDF links of every open-access copy of a work (publisher, repositories, preprints), best first. */
+export async function workLocations(id: string): Promise<string[]> {
+  const key = /^10\./.test(id) ? `doi:${id}` : short(id)
+  const w = await fetchData<any>(url(`/works/${key}`, { select: 'open_access,best_oa_location,locations' }), { cacheMs: 24 * 3600_000 })
+  const locs = [w.best_oa_location, ...(w.locations ?? [])].filter(Boolean)
+  return [w.open_access?.oa_url, ...locs.map((l: any) => l.pdf_url), ...locs.filter((l: any) => l.is_oa).map((l: any) => l.landing_page_url)].filter(Boolean)
+}
+
 export async function relatedWorks(id: string, direction: 'cites' | 'cited_by', limit = 15): Promise<WorkHit[]> {
   const filter = direction === 'cited_by' ? `cites:${short(id)}` : `cited_by:${short(id)}`
   const data = await fetchData<any>(url('/works', { filter, sort: 'cited_by_count:desc', per_page: Math.min(limit, 50), select: WORK_FIELDS }))

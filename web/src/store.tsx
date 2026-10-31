@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppState, ChatMessage, Job, ModuleKey } from '../../shared/types'
+import { filterState } from '../../shared/directions'
 import { api, emptyState } from './api'
 
 export type ViewMode = 'modules' | 'graph'
@@ -40,7 +41,12 @@ export interface AccountsView {
 }
 
 interface Store {
+  /** The board, filtered to the selected direction group (when one is selected). */
   state: AppState
+  /** The whole board, ignoring the direction filter. */
+  fullState: AppState
+  direction: number | null
+  setDirection: (id: number | null) => void
   loaded: boolean
   online: boolean
   demo: boolean
@@ -88,6 +94,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loginState, setLoginState] = useState<LoginState>({ phase: 'idle' })
   const [accounts, setAccounts] = useState<AccountsView>({ accounts: [], activeId: 'main', autoSwitch: true })
   const [draft, setDraft] = useState('')
+  const [direction, setDirectionRaw] = useState<number | null>(() => {
+    try {
+      return Number(localStorage.getItem('talvis.direction')) || null
+    } catch {
+      return null
+    }
+  })
+  const setDirection = useCallback((id: number | null) => {
+    setDirectionRaw(id)
+    try {
+      localStorage.setItem('talvis.direction', id ? String(id) : '')
+    } catch {
+      /* private mode */
+    }
+  }, [])
   const [toastText, setToastText] = useState<string | null>(null)
   const timers = useRef<Record<string, number>>({})
   const refetchTimer = useRef(0)
@@ -188,11 +209,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => es.close()
   }, [refresh, loadChat, pulse])
 
+  // A remembered direction that no longer exists is ignored.
+  const activeDirection = direction && state.directions.some((d) => d.id === direction) ? direction : null
+  const shown = useMemo(() => (activeDirection ? filterState(state, activeDirection) : state), [state, activeDirection])
+
   const send = useCallback(
     (text: string) => {
-      api('/chat', { body: { text } }).catch((e) => toast((e as Error).message))
+      api('/chat', { body: { text, directionId: activeDirection } }).catch((e) => toast((e as Error).message))
     },
-    [toast],
+    [toast, activeDirection],
   )
   const stop = useCallback(() => void api('/chat/stop', { body: {} }), [])
   const newChat = useCallback(() => void api('/chat/new', { body: {} }), [])
@@ -234,11 +259,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Store>(
     () => ({
-      state, loaded, online, demo: false, chat, thinking, live, expanded, view,
+      state: shown, fullState: state, direction: activeDirection, setDirection, loaded, online, demo: false, chat, thinking, live, expanded, view,
       claude: claudeInfo.state, claudeInfo, draft, setDraft, setExpanded, setView, pulse, send, stop, newChat,
       loginState, accounts, accountAction, login, submitLoginCode, cancelLogin, recheckClaude, startJob, stopJob, refresh, toast, toastText,
     }),
-    [state, loaded, online, chat, thinking, live, expanded, view, claudeInfo, draft, pulse, send, stop, newChat, loginState, accounts, accountAction, login, submitLoginCode, cancelLogin, recheckClaude, startJob, stopJob, refresh, toast, toastText],
+    [shown, state, activeDirection, setDirection, loaded, online, chat, thinking, live, expanded, view, claudeInfo, draft, pulse, send, stop, newChat, loginState, accounts, accountAction, login, submitLoginCode, cancelLogin, recheckClaude, startJob, stopJob, refresh, toast, toastText],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -2,12 +2,14 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 import type {
-  Activity, AppState, ChatMessage, Deadline, Doc, Gap, Group, ModuleKey, Paper, Profile, Researcher, Task, Topic,
-  University, Venue,
+  Activity, AppState, ChatMessage, Deadline, Direction, Doc, Gap, Group, Insight, ModuleKey, Paper, Position, Profile, Researcher, Task,
+  Topic, University, Venue,
 } from '../shared/types'
 import { broadcast } from './events'
+import { mirror } from './pgsync'
+import { createSchema, DATA_DIR } from './schema'
 
-export const DATA_DIR = path.resolve(process.env.PHD_DATA_DIR || 'data')
+export { DATA_DIR }
 fs.mkdirSync(DATA_DIR, { recursive: true })
 
 const db = new Database(path.join(DATA_DIR, 'phd.db'))
@@ -24,10 +26,13 @@ export interface Collections {
   gaps: Gap
   venues: Venue
   docs: Doc
+  positions: Position
+  insights: Insight
+  directions: Direction
 }
 export type Coll = keyof Collections
 
-export const COLLS: Coll[] = ['topics', 'universities', 'groups', 'researchers', 'papers', 'deadlines', 'tasks', 'gaps', 'venues', 'docs']
+export const COLLS: Coll[] = ['topics', 'universities', 'groups', 'researchers', 'papers', 'deadlines', 'tasks', 'gaps', 'venues', 'docs', 'positions', 'insights', 'directions']
 
 export const COLL_MODULE: Record<Coll, ModuleKey> = {
   topics: 'topics',
@@ -40,21 +45,12 @@ export const COLL_MODULE: Record<Coll, ModuleKey> = {
   gaps: 'gaps',
   venues: 'publish',
   docs: 'documents',
+  positions: 'positions',
+  insights: 'insights',
+  directions: 'directions',
 }
 
-for (const c of COLLS) {
-  db.exec(`CREATE TABLE IF NOT EXISTS ${c} (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`)
-}
-db.exec(`
-  CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, source TEXT NOT NULL, module TEXT NOT NULL, text TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, sdk_session TEXT, created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, tools TEXT, at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS api_cache (k TEXT PRIMARY KEY, body TEXT NOT NULL, at INTEGER NOT NULL);
-`)
-// Sessions live in each account's Claude folder, so remember which account a session belongs to.
-if (!(db.prepare('PRAGMA table_info(chat_threads)').all() as { name: string }[]).some((c) => c.name === 'sdk_account'))
-  db.exec('ALTER TABLE chat_threads ADD COLUMN sdk_account TEXT')
+createSchema(db)
 
 const now = () => new Date().toISOString()
 
@@ -70,6 +66,9 @@ const DEFAULTS: { [K in Coll]: Partial<Collections[K]> } = {
   gaps: { evidence: [], novelty: 3, feasibility: 3, status: 'candidate', description: '' },
   venues: { type: 'journal', status: 'suggested' },
   docs: { kind: 'note', content: '', status: 'draft' },
+  positions: { portal: 'web', status: 'found' },
+  insights: { source: 'reddit', sentiment: 0, themes: [], evidence: [], postsAnalyzed: 0, summary: '' },
+  directions: { description: '', keywords: [], color: '#2fd8ff', status: 'exploring' },
 }
 
 type Row = { id: number; data: string; created_at: string; updated_at: string }
@@ -77,7 +76,8 @@ type Row = { id: number; data: string; created_at: string; updated_at: string }
 function hydrate<C extends Coll>(c: C, r: Row): Collections[C] {
   const data = JSON.parse(r.data)
   const base = { ...DEFAULTS[c], ...data, id: r.id } as Record<string, unknown>
-  if (c === 'topics' || c === 'universities' || c === 'gaps') base.createdAt ??= r.created_at
+  if (c === 'topics' || c === 'universities' || c === 'gaps' || c === 'insights' || c === 'directions') base.createdAt ??= r.created_at
+  if (c === 'positions') base.foundAt ??= r.created_at
   if (c === 'papers') base.addedAt ??= r.created_at
   if (c === 'docs') base.updatedAt = r.updated_at
   return base as unknown as Collections[C]
@@ -108,6 +108,7 @@ export function insert<C extends Coll>(c: C, data: Partial<Collections[C]>): Col
   const t = now()
   const payload = { ...DEFAULTS[c], ...strip(data as Record<string, unknown>) }
   const info = db.prepare(`INSERT INTO ${c} (data, created_at, updated_at) VALUES (?, ?, ?)`).run(JSON.stringify(payload), t, t)
+  mirror.touch(c, Number(info.lastInsertRowid))
   changed(c)
   return get(c, Number(info.lastInsertRowid))!
 }
@@ -117,12 +118,14 @@ export function update<C extends Coll>(c: C, id: number, patch: Partial<Collecti
   if (!cur) return undefined
   const next = { ...strip(cur as unknown as Record<string, unknown>), ...strip(patch as Record<string, unknown>) }
   db.prepare(`UPDATE ${c} SET data = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(next), now(), id)
+  mirror.touch(c, id)
   changed(c)
   return get(c, id)
 }
 
 export function remove(c: Coll, id: number): boolean {
   const res = db.prepare(`DELETE FROM ${c} WHERE id = ?`).run(id)
+  mirror.touch(c, id)
   if (res.changes) changed(c)
   return res.changes > 0
 }
@@ -148,6 +151,7 @@ export function kvGet<T>(k: string, fallback: T): T {
 
 export function kvSet(k: string, v: unknown) {
   db.prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(k, JSON.stringify(v))
+  mirror.touch('kv', k)
 }
 
 const EMPTY_PROFILE: Profile = {
@@ -175,6 +179,17 @@ export interface Settings {
   mailto: string
   /** Switch to the next Claude account when the active one hits its plan limit. */
   autoSwitch: boolean
+  /** Browser for JavaScript pages: auto (Edge, then Chrome, then Playwright's Chromium), msedge, chrome or chromium. */
+  browser: string
+  /** Show the browser window instead of running it in the background. */
+  browserVisible: boolean
+  /** Optional Reddit "script" app credentials (reddit.com/prefs/apps); without them the public RSS feeds are used. */
+  redditClientId: string
+  redditSecret: string
+  /** TRDesk task manager: agent API base URL, key (trd_...) and the plan Talvis works in (id or name). */
+  trdeskUrl: string
+  trdeskKey: string
+  trdeskPlan: string
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -185,6 +200,13 @@ const DEFAULT_SETTINGS: Settings = {
   openalexKey: '',
   s2Key: '',
   mailto: '',
+  browser: 'auto',
+  browserVisible: false,
+  redditClientId: '',
+  redditSecret: '',
+  trdeskUrl: '',
+  trdeskKey: '',
+  trdeskPlan: '',
 }
 
 export function getSettings(): Settings {
@@ -203,6 +225,7 @@ export function logActivity(source: Activity['source'], module: ModuleKey, text:
   const at = now()
   const info = db.prepare('INSERT INTO activity (at, source, module, text) VALUES (?, ?, ?, ?)').run(at, source, module, text)
   const a: Activity = { id: Number(info.lastInsertRowid), at, source, module, text }
+  mirror.touch('activity', a.id)
   broadcast('activity', a)
   return a
 }
@@ -223,11 +246,13 @@ export function currentThread(): Thread {
 export function newThread(title = 'Söhbət'): Thread {
   const t: Thread = { id: crypto.randomUUID(), title, sdk_session: null, sdk_account: null, created_at: now() }
   db.prepare('INSERT INTO chat_threads (id, title, sdk_session, created_at) VALUES (?, ?, ?, ?)').run(t.id, t.title, null, t.created_at)
+  mirror.touch('chat_threads', t.id)
   return t
 }
 
 export function setThreadSession(id: string, session: string, account: string) {
   db.prepare('UPDATE chat_threads SET sdk_session = ?, sdk_account = ? WHERE id = ?').run(session, account, id)
+  mirror.touch('chat_threads', id)
 }
 
 /** The last messages of a thread as plain text, to carry a conversation over to another account. */
@@ -250,6 +275,7 @@ export function saveMessage(threadId: string, m: ChatMessage) {
   db.prepare(
     'INSERT INTO chat_messages (id, thread_id, role, text, tools, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET text = excluded.text, tools = excluded.tools',
   ).run(m.id, threadId, m.role, m.text, m.tools ? JSON.stringify(m.tools) : null, m.at)
+  mirror.touch('chat_messages', m.id)
 }
 
 // ---------- API response cache ----------
@@ -262,6 +288,50 @@ export function cacheGet(k: string, maxAgeMs: number): string | undefined {
 
 export function cacheSet(k: string, body: string) {
   db.prepare('INSERT INTO api_cache (k, body, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET body = excluded.body, at = excluded.at').run(k, body, Date.now())
+}
+
+// ---------- URLs seen in tool results (evidence links must come from here) ----------
+
+export const normUrl = (u: string) =>
+  u.trim().replace(/[).,;\]>"']+$/, '').replace(/^http:\/\//, 'https://').replace(/^https:\/\/(www\.|old\.|new\.)?reddit\.com/, 'https://reddit.com').replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase()
+
+const seenStmt = db.prepare('INSERT INTO seen_urls (url, at) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET at = excluded.at')
+export function noteUrls(text: string | string[]) {
+  const urls = Array.isArray(text) ? text : (text.match(/https?:\/\/[^\s"'<>()\]\\]+/g) ?? [])
+  const t = Date.now()
+  db.transaction(() => {
+    for (const u of urls) if (u) seenStmt.run(normUrl(u), t)
+  })()
+  for (const u of urls) if (u) mirror.touch('seen_urls', normUrl(u))
+}
+
+export function wasSeen(url: string): boolean {
+  return Boolean(db.prepare('SELECT 1 FROM seen_urls WHERE url = ?').get(normUrl(url)))
+}
+
+// ---------- direction groups: two to start with, once ----------
+
+if (!kvGet('directionsSeeded', { done: false }).done) {
+  if (list('directions').length === 0) {
+    const t = now()
+    insert('directions', {
+      name: 'NLP',
+      description: 'Təbii dilin emalı: aşağı resurslu dillər, Azərbaycan dili, korpus, morfologiya, LLM-lər, təhsil üçün NLP.',
+      keywords: ['NLP', 'natural language processing', 'computational linguistics', 'low-resource', 'Azerbaijani', 'morpholog', 'tokeniz', 'corpus', 'language model', 'LLM', 'machine translation', 'grammatical error', 'speech', 'dialogue', 'syntax', 'semantics', 'educational NLP'],
+      color: '#2fd8ff',
+      status: 'exploring',
+      createdAt: t,
+    })
+    insert('directions', {
+      name: 'Adaptive learning',
+      description: 'AI in Education: adaptiv öyrənmə sistemləri, intellektual tutorlar, learner modeling, educational data mining, learning analytics, HCI və istifadəçi tədqiqatları.',
+      keywords: ['adaptive learning', 'adaptive', 'intelligent tutoring', 'tutor', 'learner model', 'educational data mining', 'learning analytics', 'AI in education', 'education', 'e-learning', 'online learning', 'feedback', 'personaliz', 'recommender', 'vocabulary', 'learners', 'teaching', 'HCI', 'human-computer interaction', 'user study'],
+      color: '#a594ff',
+      status: 'exploring',
+      createdAt: t,
+    })
+  }
+  kvSet('directionsSeeded', { done: true })
 }
 
 // ---------- full snapshot for the board ----------
@@ -280,6 +350,9 @@ export function getState(jobs: AppState['jobs']): AppState {
     gaps: list('gaps'),
     venues: list('venues'),
     docs: list('docs').map((d) => ({ ...d, content: d.content.slice(0, 400) })),
+    positions: list('positions'),
+    insights: list('insights'),
+    directions: list('directions'),
     activity: recentActivity(),
     jobs,
   }

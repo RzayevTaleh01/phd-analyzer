@@ -137,7 +137,27 @@ export function ProfilePanel() {
             <Field label="OpenAlex API key (pulsuz)"><input className="input" type="password" value={s.openalexKey} onChange={(e) => setS({ ...s, openalexKey: e.target.value })} /></Field>
             <Field label="Semantic Scholar key (istəyə görə)"><input className="input" type="password" value={s.s2Key} onChange={(e) => setS({ ...s, s2Key: e.target.value })} /></Field>
             <Field label="OpenAlex mailto (istəyə görə)"><input className="input" value={s.mailto} onChange={(e) => setS({ ...s, mailto: e.target.value })} /></Field>
+            <Field label="JS saytlar üçün brauzer">
+              <select className="select" value={s.browser} onChange={(e) => setS({ ...s, browser: e.target.value })}>
+                <option value="auto">Avtomatik (Edge, sonra Chrome)</option>
+                <option value="msedge">Microsoft Edge</option>
+                <option value="chrome">Google Chrome</option>
+                <option value="chromium">Chromium (npm run browser:install)</option>
+              </select>
+            </Field>
+            <Field label="Reddit app client id (istəyə görə)"><input className="input" value={s.redditClientId} onChange={(e) => setS({ ...s, redditClientId: e.target.value })} /></Field>
+            <Field label="Reddit app secret"><input className="input" type="password" value={s.redditSecret} onChange={(e) => setS({ ...s, redditSecret: e.target.value })} /></Field>
+            <Field label="TRDesk açarı (trd_...)"><input className="input" type="password" value={s.trdeskKey} onChange={(e) => setS({ ...s, trdeskKey: e.target.value })} /></Field>
+            <Field label="TRDesk ünvanı"><input className="input" value={s.trdeskUrl} placeholder="https://trdesk-web-...run.app" onChange={(e) => setS({ ...s, trdeskUrl: e.target.value })} /></Field>
+            <Field label="TRDesk planı (ad və ya id)"><input className="input" value={s.trdeskPlan} placeholder="PhD plan" onChange={(e) => setS({ ...s, trdeskPlan: e.target.value })} /></Field>
           </div>
+          <label className="faint row" style={{ gap: 6, fontSize: 12, margin: '4px 0 8px' }}>
+            <input type="checkbox" checked={s.browserVisible} onChange={(e) => setS({ ...s, browserVisible: e.target.checked })} /> Brauzer pəncərəsini göstər (yoxlamaq üçün; adətən arxa planda işləyir)
+            <BrowserCheck />
+          </label>
+          <p className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>
+            Reddit açarsız da işləyir (açıq RSS), amma limit kiçikdir və xal/şərh sayı görünmür. Pulsuz "script" app: <Ext href="https://www.reddit.com/prefs/apps">reddit.com/prefs/apps</Ext> → client id və secret-i bura yaz.
+          </p>
           <p className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>
             OpenAlex açarsız da işləyir, amma IP üzrə gündəlik pulsuz limit kiçikdir. Pulsuz açar: <Ext href="https://openalex.org/settings/api">openalex.org/settings/api</Ext>
           </p>
@@ -145,6 +165,23 @@ export function ProfilePanel() {
         </>
       )}
     </>
+  )
+}
+
+function BrowserCheck() {
+  const [st, setSt] = useState<{ ok: boolean; version?: string; error?: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const check = () => {
+    setBusy(true)
+    api<{ ok: boolean; version?: string; error?: string }>('/browser/status')
+      .then(setSt)
+      .finally(() => setBusy(false))
+  }
+  return (
+    <span className="row" style={{ gap: 6, marginLeft: 'auto' }}>
+      {st && <span className={`chip ${st.ok ? 'green' : 'red'}`} title={st.error}>{st.ok ? `brauzer hazır ${st.version ?? ''}` : 'brauzer tapılmadı'}</span>}
+      <button className="btn sm ghost" onClick={(e) => (e.preventDefault(), check())}>{busy ? <Spinner /> : null} Yoxla</button>
+    </span>
   )
 }
 
@@ -242,6 +279,7 @@ export function UniversitiesPanel() {
                     <div className="row" style={{ gap: 6 }}>
                       <JobButton kind="scout_university" module="researchers" params={{ universityId: u.id }} label="Kəşf et" disabled={!(state.topics.length || prof.directions.length)} />
                       <JobButton kind="verify_deadlines" module="deadlines" params={{ universityId: u.id }} label="Deadline" />
+                      <JobButton kind="student_voice" module="insights" params={{ universityId: u.id }} label="Reddit" />
                     </div>
                   </td>
                   <td><DeleteBtn coll="universities" id={u.id} /></td>
@@ -332,6 +370,71 @@ export function DeadlinesPanel() {
 
 // ---------------- Today ----------------
 
+interface TrTaskView { id: string; date: string; type: string; text: string; minutes: number; section: string; doneOn: string | null }
+const TR_TYPE: Record<string, string> = { L: 'dərs', R: 'oxu', C: 'kod', P: 'məqalə', W: 'yazı', Q: 'test', X: 'təkrar', S: 'digər' }
+
+/** The TRDesk "PhD plan": sync the board into it and tick tasks off from here. */
+function TrdeskSection() {
+  const { toast, setExpanded } = useStore()
+  const [data, setData] = useState<{ plan: { title: string }; tasks: TrTaskView[]; overdue: TrTaskView[] } | null>(null)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () =>
+    api<{ plan: { title: string }; tasks: TrTaskView[]; overdue: TrTaskView[] }>('/trdesk/upcoming')
+      .then((d) => {
+        setData(d)
+        setErr('')
+      })
+      .catch((e) => setErr(String((e as Error).message)))
+  useEffect(() => void load(), [])
+  const sync = () => {
+    setBusy(true)
+    api<{ added: string[]; doneFromTrdesk: string[]; doneToTrdesk: string[]; moved: string[] }>('/trdesk/sync', { body: {} })
+      .then((r) => {
+        toast(`TRDesk: +${r.added.length} tapşırıq, ${r.doneFromTrdesk.length + r.doneToTrdesk.length} tamamlanma, ${r.moved.length} köçürmə`)
+        return load()
+      })
+      .catch((e) => toast(String(e)))
+      .finally(() => setBusy(false))
+  }
+  const toggle = (t: TrTaskView) =>
+    api(`/trdesk/tasks/${t.id}/done`, { method: 'PUT', body: { done: !t.doneOn } })
+      .then(load)
+      .catch((e) => toast(String(e)))
+  const today = todayISO()
+  const rows = data ? [...data.overdue, ...data.tasks].slice(0, 14) : []
+  return (
+    <div className="prof-block" style={{ marginBottom: 16 }}>
+      <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+        <div className="section-label grow">TRDesk · {data?.plan.title ?? 'PhD plan'}</div>
+        <button className="btn sm" disabled={busy} onClick={sync} title="Deadline-lar və tarixli tapşırıqlar TRDesk-ə köçür, tamamlananlar iki tərəfə sinxronlaşır">
+          {busy ? <Spinner /> : null} Sinxronlaşdır
+        </button>
+      </div>
+      {err && (
+        <div className="muted-box" style={{ fontSize: 12 }}>
+          {err.includes('açarı') ? (
+            <>TRDesk açarı yoxdur. <button className="btn sm ghost" onClick={() => setExpanded('profile')}>Profil → Ayarlar</button></>
+          ) : err.includes('seçilməyib') ? 'Hələ PhD plan yoxdur: "Sinxronlaşdır" onu TRDesk-də yaradır.' : err}
+        </div>
+      )}
+      {data && rows.length === 0 && <div className="empty">TRDesk planında qarşıdakı tapşırıq yoxdur.</div>}
+      <div className="list" style={{ overflow: 'visible' }}>
+        {rows.map((t) => (
+          <div key={t.id} className={`item ${t.doneOn ? 'done' : ''}`}>
+            <button className={`check ${t.doneOn ? 'on' : ''}`} onClick={() => toggle(t)} title="TRDesk-də tamamla / aç">
+              {t.doneOn && <Check size={10} strokeWidth={3} />}
+            </button>
+            <span className="t" title={t.text}>{t.text}</span>
+            <span className="m">{TR_TYPE[t.type] ?? t.type}{t.minutes ? ` · ${t.minutes} dəq` : ''}</span>
+            <span className={`chip ${t.date < today ? 'red' : t.date === today ? 'amber' : 'cyan'}`}>{t.date === today ? 'bu gün' : fmtDate(t.date)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function TodayPanel() {
   const { state } = useStore()
   const [title, setTitle] = useState('')
@@ -346,6 +449,7 @@ export function TodayPanel() {
   return (
     <>
       <JobLog module="today" />
+      <TrdeskSection />
       <div className="toolbar">
         <JobButton kind="daily_plan" module="today" label="AI: bugünkü planımı qur" />
         <input className="input" style={{ maxWidth: 380 }} value={title} placeholder="Yeni tapşırıq (bu gün üçün)..." onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />

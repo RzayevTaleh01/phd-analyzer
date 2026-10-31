@@ -9,12 +9,15 @@ import '@fontsource/jetbrains-mono/700.css'
 import '@xyflow/react/dist/style.css'
 import './styles.css'
 import App from './App'
+import AuthGate from './AuthGate'
 import { StoreProvider } from './store'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <StoreProvider>
-      <App />
-    </StoreProvider>
+    <AuthGate>
+      <StoreProvider>
+        <App />
+      </StoreProvider>
+    </AuthGate>
   </StrictMode>,
 )

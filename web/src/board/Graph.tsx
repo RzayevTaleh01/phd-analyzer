@@ -1,10 +1,10 @@
-import { memo, useMemo, useState, type CSSProperties } from 'react'
+import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, useInternalNode,
   type Edge, type EdgeProps, type Node, type NodeProps,
 } from '@xyflow/react'
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, type SimulationNodeDatum } from 'd3-force'
-import { CalendarClock, Fingerprint, Landmark, Library, Lightbulb, Network, Radar, Rocket, UserRound, type LucideIcon } from 'lucide-react'
+import { CalendarClock, Check, Fingerprint, Landmark, Library, Lightbulb, Network, Radar, Rocket, UserRound, type LucideIcon } from 'lucide-react'
 import type { AppState, ModuleKey } from '../../../shared/types'
 import { useStore } from '../store'
 
@@ -20,6 +20,17 @@ const KIND: Record<Kind, { r: number; color: string; icon: LucideIcon; module: M
   gap: { r: 15, color: '#a594ff', icon: Radar, module: 'gaps', label: 'Gap' },
   venue: { r: 13, color: '#45f0a4', icon: Rocket, module: 'publish', label: 'Jurnal' },
   deadline: { r: 11, color: '#ffb547', icon: CalendarClock, module: 'deadlines', label: 'Deadline' },
+}
+
+const LS_SHOWN = 'talvis-graph-shown'
+
+function savedShown(): Kind[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_SHOWN) || '[]')
+    return Array.isArray(v) ? v.filter((k): k is Kind => k in KIND && k !== 'me') : []
+  } catch {
+    return []
+  }
 }
 
 interface GNode extends SimulationNodeDatum { id: string; kind: Kind; label: string }
@@ -122,12 +133,36 @@ const edgeTypes = { synapse: Synapse }
 export default function Graph() {
   const { state, setExpanded } = useStore()
   const { rfNodes, rfEdges } = useMemo(() => buildGraph(state), [state])
+  // Kinds picked in the legend; empty means everything is shown.
+  const [shown, setShown] = useState<Kind[]>(savedShown)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_SHOWN, JSON.stringify(shown))
+    } catch {
+      // storage unavailable: the filter just won't persist
+    }
+  }, [shown])
+
+  // Filter after layout so picking a kind doesn't reshuffle the remaining nodes.
+  const { nodes, edges, counts } = useMemo(() => {
+    const counts = {} as Record<Kind, number>
+    rfNodes.forEach((n) => { const k = (n.data as { kind: Kind }).kind; counts[k] = (counts[k] ?? 0) + 1 })
+    const visible = (k: Kind) => k === 'me' || shown.length === 0 || shown.includes(k)
+    const nodes = rfNodes.filter((n) => visible((n.data as { kind: Kind }).kind))
+    const ids = new Set(nodes.map((n) => n.id))
+    const edges = rfEdges.filter((e) => ids.has(e.source) && ids.has(e.target))
+    return { nodes, edges, counts }
+  }, [rfNodes, rfEdges, shown])
+
+  const toggle = (k: Kind) => setShown((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]))
+
   return (
     <>
       <ReactFlow
-        key={`${rfNodes.length}:${rfEdges.length}`}
-        defaultNodes={rfNodes}
-        defaultEdges={rfEdges}
+        key={`${rfNodes.length}:${rfEdges.length}:${shown.join(',')}`}
+        defaultNodes={nodes}
+        defaultEdges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
@@ -142,22 +177,39 @@ export default function Graph() {
         <Background id="dots" variant={BackgroundVariant.Dots} gap={26} size={1.1} color="rgba(64,200,255,0.16)" />
         <Controls position="bottom-right" showInteractive={false} />
       </ReactFlow>
-      <Legend />
+      <Legend shown={shown} counts={counts} onToggle={toggle} onShowAll={() => setShown([])} />
     </>
   )
 }
 
-function Legend() {
+function Legend({ shown, counts, onToggle, onShowAll }: {
+  shown: Kind[]; counts: Record<Kind, number>; onToggle: (k: Kind) => void; onShowAll: () => void
+}) {
   const [open, setOpen] = useState(() => window.innerWidth > 1400)
   return (
     <div className="graph-legend">
-      <button className="legend-toggle" onClick={() => setOpen(!open)}>{open ? 'Legendanı gizlət' : 'Legenda'}</button>
+      <button className="legend-toggle" onClick={() => setOpen(!open)}>
+        {open ? 'Legendanı gizlət' : shown.length ? `Legenda · ${shown.length} seçili` : 'Legenda'}
+      </button>
       {open && (
         <>
-          {(Object.keys(KIND) as Kind[]).map((k) => (
-            <div key={k}><span className="sw" style={{ borderColor: KIND[k].color }} />{KIND[k].label}</div>
-          ))}
-          <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>2x klik: modulu aç</div>
+          {(Object.keys(KIND) as Kind[]).map((k) => {
+            if (k === 'me') {
+              return <div key={k} className="legend-item static"><span className="sw" style={{ borderColor: KIND[k].color }} />{KIND[k].label}</div>
+            }
+            const on = shown.includes(k)
+            const off = shown.length > 0 && !on
+            return (
+              <button key={k} className={`legend-item${on ? ' on' : ''}${off ? ' off' : ''}`} onClick={() => onToggle(k)} title={on ? 'Seçimdən çıxar' : 'Yalnız seçilənləri göstər'}>
+                <span className="sw" style={{ borderColor: KIND[k].color }} />
+                <span className="legend-name">{KIND[k].label}</span>
+                <span className="legend-count">{counts[k] ?? 0}</span>
+                <span className="legend-check">{on && <Check size={10} />}</span>
+              </button>
+            )
+          })}
+          {shown.length > 0 && <button className="legend-toggle" onClick={onShowAll}>Hamısını göstər</button>}
+          <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>Klik: yalnız seçilənlər · 2x klik düyündə: modulu aç</div>
         </>
       )}
     </div>

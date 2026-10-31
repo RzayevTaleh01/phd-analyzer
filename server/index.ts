@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  COLLS, currentThread, get, getSettings, getState, insert, logActivity, newThread, remove, setProfile, setSettings,
+  COLLS, currentThread, get, getSettings, getState, insert, list, logActivity, newThread, remove, setProfile, setSettings,
   threadMessages, update, COLL_MODULE, type Coll,
 } from './db'
 import { addClient, broadcast } from './events'
@@ -14,10 +14,23 @@ import { beginLogin, chatBusy, checkClaude, claudeState, listJobs, sendChat, sta
 import { cancelLogin, loginState, submitCode } from './agent/login'
 import { accountsView, activeAccount, addAccount, checkAccount, checkAll, publishAccounts, removeAccount, renameAccount, setActive } from './agent/accounts'
 import type { JobKind } from './agent/prompts'
+import { authRequired, guard, isAuthed, login, logout } from './auth'
+import { readPage } from './browser/read'
+import { browserStatus } from './browser/render'
+import { searchPortals, PORTALS, PORTAL_KEYS, portalOf } from './research/portals'
+import { findSubreddits, redditSearch, redditThread } from './research/reddit'
+import { flatTasks, planRef, syncBoard, trdesk } from './integrations/trdesk'
+import { todayISO } from './agent/overview'
 
 const PORT = Number(process.env.PORT || 5179)
 const app = express()
+// Behind Cloud Run's proxy: real client address and https for the login cookie.
+app.set('trust proxy', true)
 app.use(express.json({ limit: '4mb' }))
+app.get('/api/auth', (req, res) => res.json({ required: authRequired(), ok: isAuthed(req) }))
+app.post('/api/auth/login', login)
+app.post('/api/auth/logout', logout)
+app.use(guard)
 
 type H = (req: Request, res: Response) => unknown | Promise<unknown>
 const h = (fn: H) => async (req: Request, res: Response, next: NextFunction) => {
@@ -48,7 +61,7 @@ app.get('/api/items/:coll/:id', h((req, res) => {
 app.post('/api/items/:coll', h((req, res) => {
   const c = String(req.params.coll)
   if (!isColl(c)) return res.status(404).json({ error: 'unknown collection' })
-  const extra = c === 'tasks' ? { createdBy: 'user' } : c === 'topics' || c === 'universities' || c === 'gaps' ? { createdAt: new Date().toISOString() } : {}
+  const extra = c === 'tasks' ? { createdBy: 'user' } : c === 'topics' || c === 'universities' || c === 'gaps' || c === 'insights' || c === 'directions' ? { createdAt: new Date().toISOString() } : {}
   const item = insert(c, { ...extra, ...req.body })
   logActivity('user', COLL_MODULE[c], `Əlavə: ${(item as { title?: string; name?: string }).title ?? (item as { name?: string }).name ?? c}`)
   return item
@@ -86,6 +99,48 @@ app.get('/api/research/author-works', h(async (req) =>
 ))
 app.get('/api/research/venues', h((req) => oa.venuesFor(String(req.query.q ?? ''), num(req.query.from), num(req.query.limit) ?? 15)))
 app.get('/api/research/trend', h((req) => oa.yearTrend(String(req.query.q ?? ''), num(req.query.from))))
+
+// Web sources: portals, Reddit, any page through the browser.
+app.get('/api/portals', h(() => PORTAL_KEYS.map((k) => ({ key: k, name: PORTALS[k].name, note: PORTALS[k].note, direct: Boolean(PORTALS[k].direct) }))))
+app.get('/api/portals/search', h((req) => {
+  const q = String(req.query.q ?? '').trim()
+  if (!q) return []
+  const portals = req.query.portals ? String(req.query.portals).split(',').filter(Boolean) : undefined
+  return searchPortals({ query: q, portals, country: (req.query.country as string) || undefined, limit: num(req.query.limit) })
+}))
+app.post('/api/positions', h((req, res) => {
+  const b = req.body as { title?: string; url?: string; university?: string; deadline?: string; summary?: string; funding?: string }
+  if (!b.title || !b.url) return res.status(400).json({ error: 'title və url lazımdır' })
+  const dup = list('positions').find((x) => x.url === b.url)
+  if (dup) return dup
+  const pos = insert('positions', { ...b, title: b.title, url: b.url, portal: portalOf(b.url), status: 'found', foundAt: new Date().toISOString() })
+  logActivity('user', 'positions', `PhD elanı: ${pos.title.slice(0, 80)}`)
+  return pos
+}))
+app.get('/api/reddit/search', h((req) => redditSearch({
+  query: String(req.query.q ?? ''),
+  subreddit: (req.query.sub as string) || undefined,
+  sort: (req.query.sort as 'relevance') || undefined,
+  time: (req.query.t as 'all') || undefined,
+  limit: num(req.query.limit),
+})))
+app.get('/api/reddit/thread', h((req) => redditThread(String(req.query.url ?? ''), num(req.query.limit) ?? 40)))
+app.get('/api/reddit/subreddits', h((req) => findSubreddits(String(req.query.q ?? ''))))
+app.get('/api/browse', h((req) => readPage(String(req.query.url ?? ''), { mode: (req.query.mode as 'auto') || 'auto' })))
+app.get('/api/browser/status', h(() => browserStatus()))
+
+// TRDesk (task manager)
+app.post('/api/trdesk/sync', h(async () => {
+  const rep = await syncBoard()
+  logActivity('user', 'today', `TRDesk sinxron: +${rep.added.length}, tamamlanan ${rep.doneFromTrdesk.length + rep.doneToTrdesk.length}`)
+  return rep
+}))
+app.get('/api/trdesk/upcoming', h(async () => {
+  const p = await trdesk.plan(planRef())
+  const today = todayISO()
+  return { plan: { id: p.id, title: p.title }, tasks: flatTasks(p, { from: today }).slice(0, 40), overdue: flatTasks(p, { to: today, open: true }).filter((t) => t.date < today) }
+}))
+app.put('/api/trdesk/tasks/:id/done', h(async (req) => trdesk.setDone(planRef(), String(req.params.id), req.body?.done === false ? null : todayISO())))
 
 app.post('/api/research/save-paper', h((req) => {
   const { hit, topicIds, researcherIds, status } = req.body as { hit: WorkHit; topicIds?: number[]; researcherIds?: number[]; status?: 'to_read' }
@@ -156,7 +211,8 @@ app.post('/api/chat', h((req, res) => {
   const text = String(req.body?.text ?? '').trim()
   if (!text) return res.status(400).json({ error: 'empty' })
   if (chatBusy()) return res.status(409).json({ error: 'Talvis hələ əvvəlki suala cavab verir' })
-  void sendChat(text).catch((e) => console.error('chat failed', e))
+  const dir = Number(req.body?.directionId) || undefined
+  void sendChat(text, dir).catch((e) => console.error('chat failed', e))
   return res.status(202).json({ ok: true })
 }))
 app.post('/api/chat/stop', h(() => {
@@ -171,7 +227,7 @@ app.post('/api/chat/new', h(() => {
 }))
 
 // ---------- jobs ----------
-const JOB_KINDS: JobKind[] = ['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match']
+const JOB_KINDS: JobKind[] = ['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit']
 app.post('/api/jobs', h((req, res) => {
   const { kind, ...params } = req.body as { kind: JobKind }
   if (!JOB_KINDS.includes(kind)) return res.status(400).json({ error: 'unknown job' })
@@ -195,7 +251,10 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 })
 
 // Local only: the server can run research agents and open a login terminal.
-app.listen(PORT, '127.0.0.1', () => {
+// Local only by default (the server runs agents with your Claude login); HOST=0.0.0.0 in the container, behind APP_PASSWORD.
+const HOST = process.env.HOST || '127.0.0.1'
+if (HOST !== '127.0.0.1' && HOST !== 'localhost' && !authRequired()) console.warn('DİQQƏT: server açıq ünvanda işləyir, amma APP_PASSWORD yoxdur')
+app.listen(PORT, HOST, () => {
   console.log(`PhD Analyzer (Talvis): http://localhost:${PORT}`)
   void checkAll().then(() => {
     const a = activeAccount()

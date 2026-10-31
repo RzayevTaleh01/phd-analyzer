@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ReactFlowProvider } from '@xyflow/react'
-import { Crosshair, LayoutGrid, RotateCcw, Share2 } from 'lucide-react'
+import { ChevronsDownUp, LayoutGrid, Share2 } from 'lucide-react'
 import Board from './board/Board'
-import NetworkSplit from './board/NetworkSplit'
+import NetworkSplit, { DockSplit } from './board/NetworkSplit'
 import Reactor from './board/Reactor'
+import DirectionBar from './board/DirectionBar'
 import ModulePanel from './panels/ModulePanel'
 import { daysUntil, fmtClock, fmtDate, fmtTime, todayISO, weekday } from './lib/util'
 import { useStore } from './store'
@@ -60,10 +60,7 @@ function HudBar() {
           </button>
         </div>
         {view === 'modules' && (
-          <>
-            <button className="icon-btn" title="Hamısını göstər" onClick={() => window.dispatchEvent(new Event('board:fit'))}><Crosshair size={14} /></button>
-            <button className="icon-btn" title="Layout-u sıfırla" onClick={() => window.dispatchEvent(new Event('board:reset'))}><RotateCcw size={14} /></button>
-          </>
+          <button className="icon-btn" title="Bütün kartları bağla" onClick={() => window.dispatchEvent(new Event('board:reset'))}><ChevronsDownUp size={14} /></button>
         )}
         <button
           className="status-pill"
@@ -107,17 +104,18 @@ export default function App() {
   return (
     <div className="app">
       <HudBar />
+      <DirectionBar />
       <div className="stage">
         {view === 'modules' ? (
-          <ReactFlowProvider key="modules">
+          <DockSplit key="modules" fixed="board">
             <Board />
-          </ReactFlowProvider>
+            <SystemLog />
+          </DockSplit>
         ) : (
           <NetworkSplit />
         )}
-        {view === 'modules' && <SystemLog />}
         <div className="scanlines" />
-        {/* In the network view the panel opens inside the graph area, beside the chat. */}
+        {/* The card column is narrow, so here the panel opens over the whole stage; the network view opens it beside the chat. */}
         {view === 'modules' && <ModulePanel />}
         {!online && <div className="offline">Server ilə əlaqə yoxdur. Terminalda <code>npm run dev</code> işləyirmi?</div>}
         {toastText && <div className="toast">{toastText}</div>}

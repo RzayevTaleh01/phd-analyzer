@@ -50,7 +50,12 @@ export function baseEnv(): Record<string, string | undefined> {
 
 // ---------- storage ----------
 
-let accounts: Account[] = kvGet<{ list: Account[] }>('accounts', { list: [] }).list.map((a) => ({ ...a, state: 'checking' as const }))
+// Folders are stored as absolute paths; on another machine (or in the cloud) they live under this DATA_DIR.
+let accounts: Account[] = kvGet<{ list: Account[] }>('accounts', { list: [] }).list.map((a) => ({
+  ...a,
+  configDir: a.configDir ? path.join(ACCOUNTS_DIR, a.configDir.split(/[\\/]/).filter(Boolean).pop()!) : null,
+  state: 'checking' as const,
+}))
 if (!accounts.some((a) => a.id === 'main')) accounts.unshift({ id: 'main', label: 'Hesab 1', configDir: null, state: 'checking' })
 let activeId: string = kvGet<{ id: string }>('accounts_active', { id: 'main' }).id
 if (!accounts.some((a) => a.id === activeId)) activeId = 'main'

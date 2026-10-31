@@ -3,7 +3,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CircleCheck, CircleX, LoaderCircle, MessageSquarePlus, SendHorizontal, Square } from 'lucide-react'
 import ClaudeLogin from './ClaudeLogin'
-import { Corners } from './ModuleNode'
+import { Corners } from './ModuleCard'
 import Reactor from './Reactor'
 import { useStore } from '../store'
 
@@ -23,7 +23,7 @@ Başlamaq üçün mənə bir mesajda yaz:
 
 Mən profili, mövzuları və universitetləri board-a yazacam, sonra hər universitetdə mövzunu kimin araşdırdığını, onların məqalələrini və deadline-ları tapacam.`
 
-/** The Talvis chat. Used as the board's center node and docked beside the network view. */
+/** The Talvis chat, docked to the right of the modules board and the network view. */
 export default function ChatCore({ docked = false }: { docked?: boolean }) {
   const { chat, thinking, send, stop, newChat, claude, claudeInfo, draft, setDraft } = useStore()
   const box = useRef<HTMLDivElement>(null)

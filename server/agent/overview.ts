@@ -1,6 +1,7 @@
 // Compact text snapshot of the whole board, given to Claude every turn.
 import { CONDITION_BY_KEY } from '../../shared/criteria'
-import { getProfile, list } from '../db'
+import { classify, CRITERIA, directionCounts, overallScore } from '../../shared/directions'
+import { getProfile, getState, list } from '../db'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -26,6 +27,8 @@ export function buildOverview(): string {
   const gaps = list('gaps')
   const venues = list('venues')
   const docs = list('docs')
+  const positions = list('positions')
+  const insights = list('insights')
   const today = todayISO()
   const uniName = (id?: number) => (id ? unis.find((u) => u.id === id)?.name ?? `U${id}` : '-')
   const L: string[] = []
@@ -49,14 +52,29 @@ export function buildOverview(): string {
   L.push(`conditions: ${conds.length ? conds.map((c) => `[${c.key}] ${c.check}`).join(' ') : '-'}`)
   if (p.conditionsNote) L.push(`extra conditions: ${p.conditionsNote}`)
 
+  const st = getState([])
+  const cls = classify(st)
+  const dirs = st.directions
+  const dTag = (coll: string, id: number) => {
+    const ids = cls(coll, id)
+    return ids.length ? ` | dir: ${ids.map((x) => `A${x}`).join(',')}` : ''
+  }
+  const counts = directionCounts(st, cls)
+  L.push('', `## RESEARCH DIRECTION GROUPS (${dirs.length}; the user is weighing them to choose one; A-ids)`)
+  for (const d of dirs) {
+    const c = counts[d.id]
+    const sc = d.analysis ? ` | analysis ${d.analysis.analyzedAt.slice(0, 10)}: overall ${overallScore(d.analysis.scores, d.interest) ?? '?'}/10 (${CRITERIA.map((k) => `${k.key} ${k.key === 'interest' && d.interest ? `${d.interest}/5 user` : d.analysis!.scores[k.key]?.score ?? '-'}`).join(', ')})` : ' | not analysed yet'
+    L.push(`[A${d.id}] ${d.name} | ${d.status} | user interest ${d.interest ? `${d.interest}/5` : 'not rated'} | keywords: ${d.keywords.slice(0, 12).join(', ')} | items: topics ${c.topics}, papers ${c.papers}, researchers ${c.researchers}, universities ${c.universities}, positions ${c.positions}, gaps ${c.gaps}${sc}`)
+  }
+
   L.push('', `## TOPICS (${topics.length})`)
   for (const t of topics)
-    L.push(`[T${t.id}] ${t.title} | P${t.priority} ${t.status} | keywords: ${t.keywords.join(', ')} | papers: ${papers.filter((x) => x.topicIds.includes(t.id)).length}, gaps: ${gaps.filter((g) => g.topicId === t.id).length}`)
+    L.push(`[T${t.id}]${dTag('topics', t.id)} | ${t.title} | P${t.priority} ${t.status} | keywords: ${t.keywords.join(', ')} | papers: ${papers.filter((x) => x.topicIds.includes(t.id)).length}, gaps: ${gaps.filter((g) => g.topicId === t.id).length}`)
 
   L.push('', `## UNIVERSITIES (${unis.length})`)
   for (const u of unis)
     L.push(
-      `[U${u.id}] ${u.name} (${u.countryCode || u.country || '?'}) | status: ${u.status} | rank: ${u.rankLabel ?? '?'} | language test: ${u.langCert ?? 'unknown'}${u.langCertNote ? ` (${u.langCertNote.slice(0, 100)})` : ''} | openalex: ${u.openalexId ?? '-'} | researchers: ${researchers.filter((r) => r.universityId === u.id).length}${u.fitNote ? ` | fit: ${u.fitNote.slice(0, 140)}` : ''}${u.notes ? ` | notes: ${u.notes.slice(0, 120)}` : ''}`,
+      `[U${u.id}] ${u.name} (${u.countryCode || u.country || '?'})${dTag('universities', u.id)} | status: ${u.status} | rank: ${u.rankLabel ?? '?'} | language test: ${u.langCert ?? 'unknown'}${u.langCertNote ? ` (${u.langCertNote.slice(0, 100)})` : ''} | openalex: ${u.openalexId ?? '-'} | researchers: ${researchers.filter((r) => r.universityId === u.id).length}${u.fitNote ? ` | fit: ${u.fitNote.slice(0, 140)}` : ''}${u.notes ? ` | notes: ${u.notes.slice(0, 120)}` : ''}`,
     )
 
   const open = deadlines.filter((d) => d.status === 'open').sort((a, b) => a.dueDate.localeCompare(b.dueDate))
@@ -71,7 +89,7 @@ export function buildOverview(): string {
 
   L.push('', `## RESEARCHERS (${researchers.length})`)
   for (const r of [...researchers].sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0)).slice(0, 40))
-    L.push(`[R${r.id}] ${r.name} | ${uniName(r.universityId)} | h${r.hIndex ?? '?'} | topic works: ${r.topicWorks ?? '?'} | relevance ${r.relevance ?? '?'} | contact: ${r.status} | openalex: ${r.openalexId ?? '-'}`)
+    L.push(`[R${r.id}] ${r.name}${dTag('researchers', r.id)} | ${uniName(r.universityId)} | h${r.hIndex ?? '?'} | topic works: ${r.topicWorks ?? '?'} | relevance ${r.relevance ?? '?'} | contact: ${r.status} | openalex: ${r.openalexId ?? '-'}`)
 
   L.push('', `## GROUPS (${groups.length})`)
   for (const g of groups) L.push(`[G${g.id}] ${g.name} | ${uniName(g.universityId)} | PI: ${g.piName ?? '-'}${g.url ? ` | ${g.url}` : ''}`)
@@ -90,6 +108,15 @@ export function buildOverview(): string {
 
   L.push('', `## DOCUMENTS (${docs.length})`)
   for (const d of docs) L.push(`[S${d.id}] ${d.title} | ${d.kind} | ${d.status} | ${d.content.length} chars${d.universityId ? ` | ${uniName(d.universityId)}` : ''}`)
+
+  const openPos = positions.filter((x) => x.status !== 'dismissed')
+  L.push('', `## PHD POSITIONS (${openPos.length} open of ${positions.length})`)
+  for (const x of openPos.slice(0, 30))
+    L.push(`[J${x.id}] ${x.title.slice(0, 110)} | ${x.universityId ? uniName(x.universityId) : x.university ?? '?'}${x.country ? ` (${x.country})` : ''} | ${x.portal} | ${x.status}${x.deadline ? ` | deadline ${x.deadline} (${days(x.deadline)} days)` : ''}${x.funding ? ` | ${x.funding.slice(0, 60)}` : ''} | ${x.url}`)
+
+  L.push('', `## STUDENT VOICE (${insights.length})`)
+  for (const i of insights)
+    L.push(`[I${i.id}] ${i.subject}${i.universityId ? ` (U${i.universityId})` : ''} | ${i.source} | sentiment ${i.sentiment > 0 ? '+' : ''}${i.sentiment} | ${i.postsAnalyzed} posts | ${i.createdAt.slice(0, 10)} | themes: ${i.themes.map((t) => `${t.theme} (${t.tone})`).join(', ').slice(0, 220)}`)
 
   return L.join('\n')
 }

@@ -15,6 +15,9 @@ export type ModuleKey =
   | 'publish'
   | 'documents'
   | 'profile'
+  | 'positions'
+  | 'insights'
+  | 'directions'
 
 export interface Profile {
   name: string
@@ -42,6 +45,8 @@ export interface Profile {
 
 export interface Topic {
   id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
   title: string
   description: string
   keywords: string[]
@@ -61,6 +66,8 @@ export type UniversityStatus =
 
 export interface University {
   id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
   name: string
   country: string
   countryCode: string
@@ -84,6 +91,8 @@ export interface University {
 
 export interface Group {
   id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
   name: string
   universityId?: ID
   piName?: string
@@ -96,6 +105,8 @@ export type ContactStatus = 'new' | 'to_contact' | 'contacted' | 'replied' | 'me
 
 export interface Researcher {
   id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
   name: string
   universityId?: ID
   groupId?: ID
@@ -119,6 +130,8 @@ export type PaperStatus = 'to_read' | 'reading' | 'read' | 'key'
 
 export interface Paper {
   id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
   title: string
   authors: string[]
   year?: number
@@ -183,6 +196,8 @@ export interface GapEvidence {
 
 export interface Gap {
   id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
   topicId?: ID
   title: string
   description: string
@@ -196,6 +211,8 @@ export interface Gap {
 
 export interface Venue {
   id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
   name: string
   type: 'journal' | 'conference' | 'repository' | 'other'
   openalexId?: string
@@ -220,6 +237,91 @@ export interface Doc {
   status: 'draft' | 'review' | 'final'
   universityId?: ID
   updatedAt: string
+}
+
+export type PositionStatus = 'found' | 'shortlisted' | 'applying' | 'applied' | 'dismissed'
+
+/** A PhD position, program or studentship found on a portal (PhDPortal, FindAPhD, EURAXESS, ...). */
+export interface Position {
+  id: ID
+  /** Direction groups set by the user or Talvis; when absent they are derived (shared/directions.ts). */
+  directionIds?: ID[]
+  title: string
+  universityId?: ID
+  university?: string
+  country?: string
+  /** Portal key from server/research/portals.ts, or "web" for any other page. */
+  portal: string
+  url: string
+  field?: string
+  supervisor?: string
+  funding?: string
+  /** Application deadline as published (YYYY-MM-DD when the date is exact). */
+  deadline?: string
+  summary?: string
+  status: PositionStatus
+  foundAt: string
+}
+
+export interface InsightTheme {
+  theme: string
+  tone: 'positive' | 'negative' | 'mixed'
+  note: string
+}
+
+export interface InsightEvidence {
+  url: string
+  title?: string
+  /** Short quote or paraphrase of what the post/comment says. */
+  quote: string
+  subreddit?: string
+  date?: string
+  score?: number
+}
+
+/** What students say about a university or program (Reddit and other public forums), with evidence links. */
+export interface Insight {
+  id: ID
+  universityId?: ID
+  subject: string
+  source: 'reddit' | 'web' | 'mixed'
+  summary: string
+  /** -2 very negative ... +2 very positive. */
+  sentiment: number
+  themes: InsightTheme[]
+  evidence: InsightEvidence[]
+  postsAnalyzed: number
+  /** Honest limits: sample size, how old the posts are, self-selection. */
+  caveats?: string
+  createdAt: string
+}
+
+export interface DirectionAnalysis {
+  /** criterion key (shared/directions.ts CRITERIA) -> 0-10 score with the reason */
+  scores: Partial<Record<string, { score: number; note: string }>>
+  overall?: number
+  summary: string
+  strengths: string[]
+  risks: string[]
+  nextSteps: string[]
+  /** Board ids (P12, R3, U9, J2, I1...) or URLs from tool results. */
+  evidence: { ref: string; note: string }[]
+  analyzedAt: string
+}
+
+/** A main research direction group (e.g. NLP, Adaptive learning) the user is weighing. */
+export interface Direction {
+  id: ID
+  name: string
+  description: string
+  /** Words that put an item into this group (topics, paper titles, researcher concepts, fit notes). */
+  keywords: string[]
+  color: string
+  status: 'exploring' | 'leaning' | 'chosen' | 'dropped'
+  /** The user's own interest, 1-5. */
+  interest?: number
+  analysis?: DirectionAnalysis
+  createdAt: string
 }
 
 export interface Activity {
@@ -253,6 +355,9 @@ export interface AppState {
   gaps: Gap[]
   venues: Venue[]
   docs: Doc[]
+  positions: Position[]
+  insights: Insight[]
+  directions: Direction[]
   activity: Activity[]
   jobs: Job[]
 }

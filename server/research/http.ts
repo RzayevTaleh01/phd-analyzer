@@ -6,6 +6,9 @@ const MIN_GAP_MS: Record<string, number> = {
   'api.semanticscholar.org': 1100,
   'api.openalex.org': 120,
   'api.crossref.org': 200,
+  // Reddit's public feeds answer 429 quickly; the OAuth API allows ~100 requests a minute.
+  'www.reddit.com': 6500,
+  'oauth.reddit.com': 700,
 }
 const lastHit = new Map<string, number>()
 const chains = new Map<string, Promise<unknown>>()
@@ -62,8 +65,9 @@ export async function fetchData<T = unknown>(url: string, opts: FetchOpts = {}):
       throw new HttpError(0, `${host}: şəbəkə xətası (${(e as Error).message})`)
     }
     if ((res.status === 429 || res.status >= 500) && attempt < retries) {
-      const ra = Number(res.headers.get('retry-after'))
-      await new Promise((r) => setTimeout(r, ra > 0 ? ra * 1000 : delay))
+      // Reddit sends x-ratelimit-reset (seconds) instead of retry-after.
+      const ra = Number(res.headers.get('retry-after')) || Number(res.headers.get('x-ratelimit-reset'))
+      await new Promise((r) => setTimeout(r, ra > 0 ? Math.min(ra * 1000 + 500, 65_000) : delay))
       delay *= 2
       continue
     }

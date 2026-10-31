@@ -2,10 +2,16 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import { CONDITIONS } from '../../shared/criteria'
 import type { ModuleKey } from '../../shared/types'
-import { COLLS, COLL_MODULE, get, insert, list, logActivity, remove, setProfile, update, type Coll } from '../db'
+import { COLLS, COLL_MODULE, get, insert, list, logActivity, normUrl, remove, setProfile, setSettings, update, wasSeen, type Coll } from '../db'
+import { readPage, usefulJsonLd } from '../browser/read'
+import { findInPdf, pageIndexes, paperPdfCandidates, readPdf, type PdfDoc } from '../browser/pdf'
 import { resolveUniversity, saveResearcher, savePaper, saveVenue, findPaper } from '../library'
 import { dedupe, searchPapers } from '../research'
 import * as oa from '../research/openalex'
+import { PORTAL_KEYS, portalOf, searchPortals } from '../research/portals'
+import { ACADEMIC_SUBS, findSubreddits, redditSearch, redditThread } from '../research/reddit'
+import { flatTasks, planRef, syncBoard, TASK_TYPES, trdesk } from '../integrations/trdesk'
+import { CRITERION_KEYS, DIRECTION_COLORS, overallScore } from '../../shared/directions'
 import { arxivById, crossrefLookup, s2Paper, s2Recommend } from '../research/scholar'
 import type { WorkHit } from '../research/types'
 import { buildOverview, todayISO } from './overview'
@@ -48,6 +54,8 @@ function compact(c: Coll, item: Record<string, unknown>) {
   const out = { ...item }
   if (c === 'papers' && typeof out.abstract === 'string') out.abstract = (out.abstract as string).slice(0, 200)
   if (c === 'docs' && typeof out.content === 'string') out.content = (out.content as string).slice(0, 200)
+  if (c === 'positions' && typeof out.summary === 'string') out.summary = (out.summary as string).slice(0, 200)
+  if (c === 'insights' && Array.isArray(out.evidence)) out.evidence = `${(out.evidence as unknown[]).length} links`
   return out
 }
 
@@ -60,7 +68,7 @@ async function resolveWork(ref: { openalexId?: string; doi?: string; arxivId?: s
 }
 
 const collEnum = z.enum(COLLS as [Coll, ...Coll[]])
-const moduleEnum = z.enum(['today', 'deadlines', 'universities', 'topics', 'groups', 'researchers', 'papers', 'gaps', 'publish', 'documents', 'profile'])
+const moduleEnum = z.enum(['today', 'deadlines', 'universities', 'topics', 'groups', 'researchers', 'papers', 'gaps', 'publish', 'documents', 'profile', 'positions', 'insights', 'directions'])
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
 const ids = z.array(z.number().int()).optional()
 
@@ -485,12 +493,433 @@ export const phdTools = [
     ro,
   ),
 
+  // ---------- the web: any page, Reddit, PhD portals ----------
+  tool(
+    'browse_page',
+    'Read a web page, with a real browser when needed (runs JavaScript, so SPAs, portals and dynamic lists work; WebFetch does not). Returns readable text, links (optionally filtered) and schema.org JSON-LD (job postings, programs). Use it when WebFetch returns little or nothing, for listing pages, and to read the exact wording of an official page.',
+    {
+      url: z.string(),
+      mode: z
+        .enum(['auto', 'browser', 'http'])
+        .optional()
+        .describe('auto (default): fast HTTP first, browser if the page looks like a JavaScript shell. Use browser for search/result/listing pages whose results load after the page (auto may return only filters and menus)'),
+      waitFor: z.string().optional().describe('CSS selector to wait for (e.g. a results list)'),
+      scroll: z.boolean().optional().describe('scroll to load lazy lists'),
+      find: z.string().optional().describe('only return paragraphs containing any of these space-separated words (case-insensitive)'),
+      linkFilter: z.string().optional().describe('only return links whose URL or text contains this'),
+      maxChars: z.number().int().max(40000).optional(),
+    },
+    safe(async ({ url, mode, waitFor, scroll, find, linkFilter, maxChars }) => {
+      const p = await readPage(url, { mode, waitFor, scroll })
+      let text = p.text
+      if (find) {
+        const words = find.toLowerCase().split(/\s+/).filter(Boolean)
+        const paras = text.split(/\n+/).filter((x) => words.some((w) => x.toLowerCase().includes(w)))
+        text = paras.length ? paras.join('\n') : `(nothing matched "${find}"; full text follows)\n${text}`
+      }
+      const lim = maxChars ?? 12000
+      const lf = linkFilter?.toLowerCase()
+      const links = p.links.filter((l) => !lf || l.href.toLowerCase().includes(lf) || l.text.toLowerCase().includes(lf)).slice(0, lf ? 80 : 40)
+      return ok({
+        url: p.finalUrl,
+        via: p.via,
+        status: p.status,
+        title: p.title,
+        blocked: p.blocked ? `${p.blocked} - do not retry; use WebSearch results/snippets instead, or ask the user to open the page` : undefined,
+        jsonld: usefulJsonLd(p.jsonld),
+        text: text.length > lim ? `${text.slice(0, lim)}\n...(${text.length - lim} more chars; use find= to target a section)` : text,
+        links,
+      })
+    }),
+    ro,
+  ),
+
+  tool(
+    'read_pdf',
+    'Read a PDF from the web: a paper\'s full text, admission regulations, a call document. Give url, or paperId (board P id) to find the open-access PDF of a library paper automatically (OpenAlex locations, arXiv, the landing page\'s citation_pdf_url). Use find to get only the paragraphs you need (with page numbers), pages to read a range ("1-3,8"). Text layer only: scanned PDFs are reported as such.',
+    {
+      url: z.string().optional(),
+      paperId: z.number().int().optional(),
+      find: z.string().optional().describe('space-separated words; returns matching paragraphs with page numbers'),
+      pages: z.string().optional().describe('e.g. "1-3" or "2,5-7"'),
+      maxChars: z.number().int().max(60000).optional(),
+    },
+    safe(async ({ url, paperId, find, pages, maxChars }) => {
+      if (!url && !paperId) return fail('give url or paperId')
+      let doc: PdfDoc | undefined
+      const tried: string[] = []
+      if (url) doc = await readPdf(url)
+      else {
+        const c = await paperPdfCandidates(paperId!)
+        for (const u of c.urls) {
+          try {
+            doc = await readPdf(u)
+            break
+          } catch (e) {
+            tried.push(`${u}: ${(e as Error).message}`)
+          }
+        }
+        if (!doc) return fail(`no readable open-access PDF found for P${paperId} "${c.title}". Tried: ${tried.join(' | ') || 'no PDF links known'}. Say the full text is not available and use the abstract.`)
+      }
+      const idx = pageIndexes(pages, doc.pages)
+      const lim = maxChars ?? 15000
+      const head = { url: doc.url, title: doc.title, author: doc.author, pages: doc.pages, scanned: doc.scanned || undefined, triedFirst: tried.length ? tried : undefined }
+      if (find) {
+        const hits = findInPdf(doc, find, idx)
+        return ok({ ...head, matches: hits.length, paragraphs: hits.slice(0, 40), note: hits.length ? undefined : 'nothing matched; try other words or read pages' })
+      }
+      let text = idx.map((i) => `--- page ${i + 1} ---\n${doc!.text[i]}`).join('\n\n')
+      if (text.length > lim) text = `${text.slice(0, lim)}\n...(${text.length - lim} more chars; use pages= or find=)`
+      return ok({ ...head, text })
+    }),
+    ro,
+  ),
+
+  tool(
+    'reddit_search',
+    `Search Reddit posts (what students and PhD candidates say). Use quotes for exact names, e.g. "University of Tartu" PhD. subreddit narrows it (academic ones: ${ACADEMIC_SUBS.join(', ')}; universities often have their own, find it with find_subreddits). Posts are anecdotes: note the date and score.`,
+    {
+      query: z.string(),
+      subreddit: z.string().optional(),
+      sort: z.enum(['relevance', 'top', 'new', 'comments']).optional(),
+      time: z.enum(['all', 'year', 'month', 'week']).optional(),
+      limit: z.number().int().max(50).optional(),
+    },
+    safe(async (o) => {
+      const r = await redditSearch({ ...o, limit: o.limit ?? 20 })
+      return ok({ via: r.via, count: r.posts.length, note: r.via === 'rss' ? 'public RSS: no scores; Reddit allows few requests, so search deliberately' : undefined, posts: r.posts })
+    }),
+    ro,
+  ),
+
+  tool(
+    'reddit_thread',
+    'Read one Reddit thread: the post and its top comments (url from reddit_search).',
+    { url: z.string(), limit: z.number().int().max(100).optional() },
+    safe(async ({ url, limit }) => ok(await redditThread(url, limit ?? 40))),
+    ro,
+  ),
+
+  tool('find_subreddits', "Find subreddits by name, e.g. a university's own subreddit or a city/country one.", { query: z.string() }, safe(async ({ query }) => ok(await findSubreddits(query))), ro),
+
+  tool(
+    'portal_search',
+    `Search PhD positions/programs on portals (${PORTAL_KEYS.join(', ')}). Portals that allow it are searched directly and return listings; for the others (PhDPortal, FindAPhD, EURAXESS...) the result gives a webQuery to run with WebSearch, because they block automated search pages. Read promising listings with browse_page before saving.`,
+    {
+      query: z.string().describe('field in English, e.g. "natural language processing"'),
+      portals: z.array(z.string()).optional(),
+      country: z.string().optional(),
+      limit: z.number().int().max(30).optional(),
+    },
+    safe(async (o) => ok(await searchPortals(o))),
+    ro,
+  ),
+
+  tool(
+    'save_position',
+    'Save a PhD position / program / studentship. url must be a page that appeared in a tool result (portal_search, browse_page, WebSearch, WebFetch). Same url updates it. deadline only as published (YYYY-MM-DD).',
+    {
+      title: z.string(),
+      url: z.string(),
+      universityId: z.number().int().optional(),
+      university: z.string().optional(),
+      country: z.string().optional(),
+      field: z.string().optional(),
+      supervisor: z.string().optional(),
+      funding: z.string().optional().describe('e.g. "fully funded, EUR 2,800/month", "self-funded"'),
+      deadline: date.optional(),
+      summary: z.string().optional(),
+      status: z.enum(['found', 'shortlisted', 'applying', 'applied', 'dismissed']).optional(),
+    },
+    safe(async ({ url, ...p }) => {
+      if (!wasSeen(url)) return fail('this url did not appear in any tool result; find it with portal_search, WebSearch or browse_page first')
+      const uniId = p.universityId ?? (p.university ? list('universities').find((u) => u.name.toLowerCase() === p.university!.toLowerCase())?.id : undefined)
+      const existing = list('positions').find((x) => normUrl(x.url) === normUrl(url))
+      const data = { ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)), universityId: uniId, url, portal: portalOf(url) }
+      const saved = existing ? update('positions', existing.id, data)! : insert('positions', { ...data, status: p.status ?? 'found', foundAt: new Date().toISOString() })
+      logActivity('ai', 'positions', `PhD elanı: ${saved.title.slice(0, 80)}`)
+      return ok(saved)
+    }),
+  ),
+
+  tool(
+    'add_insight',
+    'Save an analysis of what students say about a university/program (student voice). Every evidence url must be a Reddit post/comment or page that appeared in a tool result. Quote or closely paraphrase; no evidence = no claim. Same subject + source replaces the earlier analysis.',
+    {
+      subject: z.string().describe('university or program name'),
+      universityId: z.number().int().optional(),
+      source: z.enum(['reddit', 'web', 'mixed']).optional(),
+      summary: z.string().describe('3-6 sentences: the overall picture, in Azerbaijani'),
+      sentiment: z.number().int().min(-2).max(2),
+      themes: z.array(z.object({ theme: z.string(), tone: z.enum(['positive', 'negative', 'mixed']), note: z.string() })).min(1),
+      evidence: z
+        .array(z.object({ url: z.string(), title: z.string().optional(), quote: z.string(), subreddit: z.string().optional(), date: z.string().optional(), score: z.number().optional() }))
+        .min(2),
+      postsAnalyzed: z.number().int().min(1),
+      caveats: z.string().optional(),
+    },
+    safe(async (a) => {
+      const unseen = a.evidence.filter((e) => !wasSeen(e.url)).map((e) => e.url)
+      if (unseen.length) return fail(`evidence urls not found in any tool result: ${unseen.join(', ')}. Use reddit_search / reddit_thread / browse_page first.`)
+      const uniId = a.universityId ?? list('universities').find((u) => u.name.toLowerCase() === a.subject.toLowerCase())?.id
+      const source = a.source ?? 'reddit'
+      const existing = list('insights').find((x) => (uniId ? x.universityId === uniId : x.subject.toLowerCase() === a.subject.toLowerCase()) && x.source === source)
+      const data = { ...a, universityId: uniId, source, createdAt: new Date().toISOString() }
+      const saved = existing ? update('insights', existing.id, data)! : insert('insights', data)
+      logActivity('ai', 'insights', `Tələbə rəyi: ${saved.subject} (${saved.sentiment > 0 ? '+' : ''}${saved.sentiment})`)
+      return ok({ id: saved.id, subject: saved.subject, evidence: saved.evidence.length })
+    }),
+  ),
+
+  // ---------- research direction groups ----------
+  tool(
+    'save_direction',
+    'Create or update a research direction group (e.g. NLP, Adaptive learning). keywords decide which board items fall into it automatically. Give id to update. Do not change the user\'s interest rating.',
+    {
+      id: z.number().int().optional(),
+      name: z.string().optional(),
+      description: z.string().optional(),
+      keywords: z.array(z.string()).optional(),
+      status: z.enum(['exploring', 'leaning', 'chosen', 'dropped']).optional(),
+    },
+    safe(async ({ id, ...d }) => {
+      const patch = Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined))
+      if (id) {
+        const saved = update('directions', id, patch)
+        if (!saved) return fail(`direction ${id} not found`)
+        logActivity('ai', 'directions', `İstiqamət yeniləndi: ${saved.name}`)
+        return ok(saved)
+      }
+      if (!d.name) return fail('name needed')
+      const color = DIRECTION_COLORS[list('directions').length % DIRECTION_COLORS.length]
+      const saved = insert('directions', { keywords: [], description: '', status: 'exploring', ...patch, name: d.name, color, createdAt: new Date().toISOString() })
+      logActivity('ai', 'directions', `Yeni istiqamət: ${saved.name}`)
+      return ok(saved)
+    }),
+  ),
+
+  tool(
+    'tag_directions',
+    'Set which direction groups board items belong to, overriding the automatic grouping (e.g. a researcher who is really NLP). mode add (default) keeps existing groups, replace sets exactly these, clear returns the item to automatic grouping.',
+    {
+      directionIds: z.array(z.number().int()),
+      items: z.array(z.object({ type: z.enum(['topics', 'universities', 'groups', 'researchers', 'papers', 'gaps', 'venues', 'positions']), id: z.number().int() })).min(1).max(60),
+      mode: z.enum(['add', 'replace', 'clear']).optional(),
+    },
+    safe(async ({ directionIds, items: refs, mode }) => {
+      const bad = directionIds.filter((d) => !get('directions', d))
+      if (bad.length) return fail(`unknown direction ids: ${bad.join(', ')}`)
+      const out: string[] = []
+      for (const r of refs) {
+        const cur = get(r.type, r.id) as { directionIds?: number[] } | undefined
+        if (!cur) {
+          out.push(`${r.type} ${r.id}: not found`)
+          continue
+        }
+        const next = mode === 'clear' ? undefined : mode === 'replace' ? directionIds : [...new Set([...(cur.directionIds ?? []), ...directionIds])]
+        update(r.type, r.id, { directionIds: next } as never)
+        out.push(`${r.type} ${r.id}: ${next ? next.map((x) => `A${x}`).join(',') : 'automatic'}`)
+      }
+      logActivity('ai', 'directions', `${refs.length} element istiqamətə bağlandı`)
+      return ok(out)
+    }),
+  ),
+
+  tool(
+    'save_direction_analysis',
+    `Save the evidence-based fit analysis of one direction group. scores: 0-10 per criterion (${CRITERION_KEYS.join(', ')}), each with a one-line reason; skip interest when the user rated it. evidence refs are board ids (P12, R3, U9, J2, I1, X4...) or URLs from tool results.`,
+    {
+      directionId: z.number().int(),
+      scores: z.record(z.enum(CRITERION_KEYS as [string, ...string[]]), z.object({ score: z.number().min(0).max(10), note: z.string() })),
+      summary: z.string().describe('3-6 sentences in Azerbaijani'),
+      strengths: z.array(z.string()).max(6),
+      risks: z.array(z.string()).max(6),
+      nextSteps: z.array(z.string()).max(6),
+      evidence: z.array(z.object({ ref: z.string(), note: z.string() })).min(3).max(20),
+    },
+    safe(async ({ directionId, ...a }) => {
+      const d = get('directions', directionId)
+      if (!d) return fail(`direction ${directionId} not found`)
+      const PREFIX: Record<string, Coll> = { T: 'topics', U: 'universities', G: 'groups', R: 'researchers', P: 'papers', X: 'gaps', V: 'venues', J: 'positions', I: 'insights', D: 'deadlines' }
+      const badRefs = a.evidence
+        .map((e) => e.ref.trim())
+        .filter((ref) => {
+          const m = ref.match(/^\[?([A-Z])(\d+)\]?$/)
+          if (m) return !PREFIX[m[1]] || !get(PREFIX[m[1]], Number(m[2]))
+          return !/^https?:\/\//.test(ref) || !wasSeen(ref)
+        })
+      if (badRefs.length) return fail(`evidence refs not on the board / not seen in tool results: ${badRefs.join(', ')}`)
+      const analysis = { ...a, overall: overallScore(a.scores, d.interest), analyzedAt: new Date().toISOString() }
+      update('directions', directionId, { analysis })
+      logActivity('ai', 'directions', `İstiqamət analizi: ${d.name} - ${analysis.overall ?? '?'}/10`)
+      return ok({ direction: d.name, overall: analysis.overall })
+    }),
+  ),
+
+
+  // ---------- TRDesk: the user's task manager ----------
+  tool(
+    'trdesk_plans',
+    "List the user's TRDesk plans with status and progress (which plan is the default PhD plan is in Settings).",
+    {},
+    safe(async () => ok(await trdesk.plans())),
+    ro,
+  ),
+
+  tool(
+    'trdesk_plan',
+    'Read a TRDesk plan: tasks by date with id, type, minutes, section, done date, and day notes. Defaults to the PhD plan. Use from/to (YYYY-MM-DD) or openOnly to keep it short.',
+    { plan: z.string().optional().describe('plan id or name; default = PhD plan'), from: date.optional(), to: date.optional(), openOnly: z.boolean().optional() },
+    safe(async ({ plan, from, to, openOnly }) => {
+      const p = await trdesk.plan(planRef(plan))
+      const tasks = flatTasks(p, { from, to, open: openOnly })
+      const notes = p.weeks.flatMap((w) => w.days.filter((d) => d.note).map((d) => ({ dayId: d.id, idx: d.idx, note: d.note })))
+      return ok({
+        id: p.id, title: p.title, description: p.description, startDate: p.startDate, archived: p.archived,
+        total: tasks.length,
+        tasks: tasks.slice(0, 150).map((t) => ({ id: t.id, date: t.date, type: t.type, text: t.text, minutes: t.minutes || undefined, section: t.section || undefined, optional: t.optional || undefined, done: t.doneOn ?? undefined, hasContent: t.hasContent || undefined })),
+        notes,
+      })
+    }),
+    ro,
+  ),
+
+  tool(
+    'trdesk_sync',
+    'Mirror the board into the TRDesk PhD plan (creates the "PhD plan" if missing): open deadlines and dated board tasks become TRDesk tasks on their dates; completion syncs both ways. Never duplicates.',
+    {},
+    safe(async () => ok(await syncBoard())),
+  ),
+
+  tool(
+    'trdesk_add_tasks',
+    'Add tasks to a TRDesk plan on given dates (they show up in the TRDesk widget on that day).',
+    {
+      plan: z.string().optional(),
+      tasks: z
+        .array(
+          z.object({
+            text: z.string(),
+            date: date.optional().describe('default today'),
+            type: z.enum(TASK_TYPES).optional().describe('L lesson, R reading, C code, P paper, W writing, Q test, X review, S other'),
+            minutes: z.number().int().min(0).max(6000).optional(),
+            optional: z.boolean().optional(),
+            section: z.string().optional(),
+            content: z.string().optional().describe('Markdown page inside the task: steps, links, sources'),
+          }),
+        )
+        .min(1)
+        .max(40),
+    },
+    safe(async ({ plan, tasks }) => {
+      const ref = planRef(plan)
+      const out: { text: string; id?: string; error?: string }[] = []
+      for (const t of tasks) {
+        try {
+          out.push({ text: t.text, id: (await trdesk.addTask(ref, t)).id })
+        } catch (e) {
+          out.push({ text: t.text, error: (e as Error).message })
+        }
+      }
+      logActivity('ai', 'today', `TRDesk: ${out.filter((o) => o.id).length} tapşırıq əlavə olundu`)
+      return ok(out)
+    }),
+  ),
+
+  tool(
+    'trdesk_update_task',
+    'Change a TRDesk task: text, type, minutes, section, content, optional, or move it to another date.',
+    {
+      plan: z.string().optional(),
+      taskId: z.string(),
+      text: z.string().optional(),
+      date: date.optional(),
+      type: z.enum(TASK_TYPES).optional(),
+      minutes: z.number().int().min(0).max(6000).optional(),
+      optional: z.boolean().optional(),
+      section: z.string().optional(),
+      content: z.string().optional(),
+    },
+    safe(async ({ plan, taskId, ...b }) => ok(await trdesk.updateTask(planRef(plan), taskId, b))),
+  ),
+
+  tool(
+    'trdesk_task_done',
+    'Mark a TRDesk task done (default today) or not done (done=false).',
+    { plan: z.string().optional(), taskId: z.string(), done: z.boolean().optional(), doneOn: date.optional() },
+    safe(async ({ plan, taskId, done, doneOn }) => ok(await trdesk.setDone(planRef(plan), taskId, done === false ? null : doneOn ?? todayISO()))),
+  ),
+
+  tool(
+    'trdesk_delete_task',
+    'Delete a TRDesk task. Only when the user explicitly asked for it.',
+    { plan: z.string().optional(), taskId: z.string() },
+    safe(async ({ plan, taskId }) => ok(await trdesk.deleteTask(planRef(plan), taskId))),
+  ),
+
+  tool(
+    'trdesk_day_note',
+    "Write the note of a plan day (e.g. today's summary or what to remember).",
+    { plan: z.string().optional(), date: date, text: z.string() },
+    safe(async ({ plan, date: d, text }) => {
+      const p = await trdesk.plan(planRef(plan))
+      const [y, m, dd] = p.startDate.split('-').map(Number)
+      const idx = Math.round((new Date(`${d}T00:00:00`).getTime() - new Date(y, m - 1, dd).getTime()) / 86400000)
+      // TRDesk creates a day when its first task is added.
+      const day = p.weeks.flatMap((w) => w.days).find((x) => x.idx === idx)
+      if (!day) return fail(`no day for ${d} in this plan yet; add a task on that date first`)
+      return ok(await trdesk.dayNote(p.id, day.id, text))
+    }),
+  ),
+
+  tool(
+    'trdesk_manage_plan',
+    'Create, rename/edit, archive/unarchive or delete a TRDesk plan. delete only when the user explicitly asked. With action=create and setDefault=true it becomes the plan Talvis uses.',
+    {
+      action: z.enum(['create', 'update', 'archive', 'unarchive', 'delete', 'set_default']),
+      plan: z.string().optional().describe('id or name (not for create)'),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      startDate: date.optional(),
+      color: z.enum(['emerald', 'blue', 'violet', 'rose', 'orange', 'amber', 'cyan', 'pink', 'lime', 'slate']).optional(),
+      setDefault: z.boolean().optional(),
+    },
+    safe(async ({ action, plan, title, description, startDate, color, setDefault }) => {
+      if (action === 'create') {
+        if (!title) return fail('title needed')
+        const r = await trdesk.createPlan({ title, description, startDate: startDate ?? todayISO(), color })
+        if (setDefault) setSettings({ trdeskPlan: r.id })
+        logActivity('ai', 'today', `TRDesk plan yaradıldı: ${title}`)
+        return ok(r)
+      }
+      if (!plan) return fail('plan needed')
+      if (action === 'set_default') {
+        const p = await trdesk.plan(plan)
+        setSettings({ trdeskPlan: p.id })
+        return ok({ default: p.title })
+      }
+      if (action === 'delete') return ok(await trdesk.deletePlan(plan))
+      if (action === 'archive' || action === 'unarchive') return ok(await trdesk.updatePlan(plan, { archived: action === 'archive' }))
+      return ok(await trdesk.updatePlan(plan, { title, description, startDate, color }))
+    }),
+  ),
+
+  tool(
+    'trdesk_agenda',
+    'Tasks of all active TRDesk plans between two dates (max 70 days), to see the whole workload, not only PhD.',
+    { from: date, to: date },
+    safe(async ({ from, to }) => ok(await trdesk.agenda(from, to))),
+    ro,
+  ),
+
+
   // ---------- background jobs ----------
   tool(
     'start_job',
-    'Start a long research job in the background (it fills the board on its own). kinds: find_universities (universities matching the profile criteria; optional note), gap_analysis (topicId), scout_university (universityId, optional topicIds), verify_deadlines (optional universityId), daily_plan, venue_match (title, abstract).',
+    'Start a long research job in the background (it fills the board on its own). kinds: find_universities (universities matching the profile criteria; optional note), gap_analysis (topicId), scout_university (universityId, optional topicIds), verify_deadlines (optional universityId), daily_plan, venue_match (title, abstract), student_voice (universityId, or note = university name: what students say on Reddit), portal_scan (PhD positions on portals for the profile; optional note, universityId), direction_fit (explore and score research direction groups to find the best fit; optional directionId for one, otherwise all).',
     {
-      kind: z.enum(['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match']),
+      kind: z.enum(['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit']),
+      directionId: z.number().int().optional(),
       topicId: z.number().int().optional(),
       topicIds: ids,
       universityId: z.number().int().optional(),
@@ -544,6 +973,27 @@ export function toolMeta(name: string, input: Record<string, unknown>): { module
     case 'find_venues': return { module: 'publish', label: `Jurnal/konfrans axtarışı: "${s('query')}"` }
     case 'verify_doi': return { module: 'papers', label: `DOI yoxlanışı: ${s('doi')}` }
     case 'topic_trend': return { module: 'topics', label: `Trend: "${s('query')}"` }
+    case 'read_pdf': return { module: input.paperId ? 'papers' : 'core', label: input.paperId ? `PDF oxunur: P${s('paperId')}${input.find ? ` ("${s('find')}")` : ''}` : `PDF oxunur: ${s('url').slice(0, 70)}` }
+    case 'browse_page': return { module: 'core', label: `Brauzer: ${s('url').slice(0, 70)}` }
+    case 'reddit_search': return { module: 'insights', label: `Reddit: "${s('query')}"${input.subreddit ? ` r/${s('subreddit')}` : ''}` }
+    case 'reddit_thread': return { module: 'insights', label: 'Reddit mövzusu oxunur' }
+    case 'find_subreddits': return { module: 'insights', label: `Subreddit axtarışı: "${s('query')}"` }
+    case 'portal_search': return { module: 'positions', label: `PhD portalları: "${s('query')}"` }
+    case 'save_position': return { module: 'positions', label: `PhD elanı: ${s('title').slice(0, 60)}` }
+    case 'add_insight': return { module: 'insights', label: `Tələbə rəyi: ${s('subject')}` }
+    case 'save_direction': return { module: 'directions', label: `İstiqamət: ${s('name') || `A${s('id')}`}` }
+    case 'tag_directions': return { module: 'directions', label: `${(input.items as unknown[] | undefined)?.length ?? 0} element istiqamətə bağlanır` }
+    case 'save_direction_analysis': return { module: 'directions', label: `İstiqamət analizi: A${s('directionId')}` }
+    case 'trdesk_plans': return { module: 'today', label: 'TRDesk: planlar' }
+    case 'trdesk_plan': return { module: 'today', label: `TRDesk: ${s('plan') || 'PhD plan'} oxunur` }
+    case 'trdesk_sync': return { module: 'today', label: 'TRDesk: board sinxronlaşdırılır' }
+    case 'trdesk_add_tasks': return { module: 'today', label: `TRDesk: ${(input.tasks as unknown[] | undefined)?.length ?? 0} tapşırıq əlavə olunur` }
+    case 'trdesk_update_task': return { module: 'today', label: `TRDesk: tapşırıq dəyişir` }
+    case 'trdesk_task_done': return { module: 'today', label: `TRDesk: tapşırıq ${input.done === false ? 'açılır' : 'tamamlanır'}` }
+    case 'trdesk_delete_task': return { module: 'today', label: 'TRDesk: tapşırıq silinir' }
+    case 'trdesk_day_note': return { module: 'today', label: `TRDesk: ${s('date')} qeydi` }
+    case 'trdesk_manage_plan': return { module: 'today', label: `TRDesk plan: ${s('action')} ${s('title') || s('plan')}` }
+    case 'trdesk_agenda': return { module: 'today', label: `TRDesk gündəliyi ${s('from')}` }
     case 'start_job': return { module: 'core', label: `Arxa plan işi başladı: ${s('kind')}` }
     case 'WebSearch': return { module: 'core', label: `Veb axtarış: "${s('query')}"` }
     case 'WebFetch': return { module: 'core', label: `Səhifə oxunur: ${s('url').slice(0, 70)}` }

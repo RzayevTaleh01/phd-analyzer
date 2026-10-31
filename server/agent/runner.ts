@@ -1,7 +1,7 @@
 import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options, type SDKMessage, type SDKRateLimitInfo } from '@anthropic-ai/claude-agent-sdk'
 import type { ChatMessage, Job, ModuleKey } from '../../shared/types'
 import { CONDITION_BY_KEY } from '../../shared/criteria'
-import { currentThread, get, getProfile, getSettings, list, logActivity, saveMessage, setThreadSession, threadHistory, update } from '../db'
+import { currentThread, get, getProfile, getSettings, list, logActivity, noteUrls, saveMessage, setThreadSession, threadHistory, update } from '../db'
 import { broadcast } from '../events'
 import * as oa from '../research/openalex'
 import {
@@ -23,10 +23,11 @@ function baseOptions(o: {
   persist: boolean
   account: Account
   history?: string
+  focus?: string
 }): Options {
   const s = getSettings()
   const fallback = s.model.includes('sonnet') ? 'claude-opus-5-5' : 'claude-sonnet-5-5'
-  const dynamic = `# BOARD SNAPSHOT\n${buildOverview()}${o.history ? `\n\n# CONVERSATION SO FAR (continue it naturally)\n${o.history}` : ''}`
+  const dynamic = `# BOARD SNAPSHOT\n${buildOverview()}${o.focus ? `\n\nFOCUS: ${o.focus}` : ''}${o.history ? `\n\n# CONVERSATION SO FAR (continue it naturally)\n${o.history}` : ''}`
   return {
     model: s.model || undefined,
     fallbackModel: fallback,
@@ -93,10 +94,18 @@ async function consume(q: AsyncIterable<SDKMessage>, h: StreamHooks): Promise<{ 
         blockOpen = true
       } else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') h.onText?.(ev.delta.text)
     } else if (m.type === 'assistant' && !m.parent_tool_use_id) {
-      for (const b of m.message.content) if (b.type === 'tool_use') h.onTool?.(b.id, b.name, (b.input ?? {}) as Record<string, unknown>)
+      for (const b of m.message.content) {
+        if (b.type !== 'tool_use') continue
+        const input = (b.input ?? {}) as Record<string, unknown>
+        if (b.name === 'WebFetch' && typeof input.url === 'string') noteUrls([input.url])
+        h.onTool?.(b.id, b.name, input)
+      }
     } else if (m.type === 'user' && Array.isArray(m.message.content)) {
-      for (const b of m.message.content as { type: string; tool_use_id?: string; is_error?: boolean }[])
-        if (b.type === 'tool_result' && b.tool_use_id) h.onToolDone?.(b.tool_use_id, Boolean(b.is_error))
+      for (const b of m.message.content as { type: string; tool_use_id?: string; is_error?: boolean; content?: unknown }[]) {
+        if (b.type !== 'tool_result' || !b.tool_use_id) continue
+        if (!b.is_error && b.content) noteUrls(typeof b.content === 'string' ? b.content : JSON.stringify(b.content))
+        h.onToolDone?.(b.tool_use_id, Boolean(b.is_error))
+      }
     } else if (m.type === 'result') {
       if (m.subtype === 'success') {
         finalText = m.result
@@ -169,9 +178,11 @@ export function stopChat() {
   chatAbort?.abort()
 }
 
-export async function sendChat(text: string): Promise<void> {
+export async function sendChat(text: string, directionId?: number): Promise<void> {
   if (chatAbort) throw new Error('busy')
   const thread = currentThread()
+  // Links the user pastes count as known sources.
+  noteUrls(text)
   const user: ChatMessage = { id: crypto.randomUUID(), role: 'user', text, at: new Date().toISOString() }
   saveMessage(thread.id, user)
   broadcast('chat', { kind: 'message', message: user })
@@ -180,6 +191,8 @@ export async function sendChat(text: string): Promise<void> {
   chatAbort = new AbortController()
   const abort = chatAbort
   const s = getSettings()
+  const dir = directionId ? get('directions', directionId) : undefined
+  const focus = dir ? `the user is viewing the board filtered to direction group [A${dir.id}] ${dir.name}` : undefined
   const say = (t: string) => {
     reply.text += t
     broadcast('chat', { kind: 'delta', id: reply.id, text: t })
@@ -191,7 +204,7 @@ export async function sendChat(text: string): Promise<void> {
         const t = currentThread()
         const resume = t.sdk_session && t.sdk_account === acc.id ? t.sdk_session : undefined
         const history = resume ? undefined : threadHistory(thread.id, user.id)
-        const q = query({ prompt: text, options: baseOptions({ effort: s.chatEffort, maxTurns: 40, resume, abort, persist: true, account: acc, history }) })
+        const q = query({ prompt: text, options: baseOptions({ effort: s.chatEffort, maxTurns: 60, resume, abort, persist: true, account: acc, history, focus }) })
         return consume(q, {
           onInit: (sid) => setThreadSession(thread.id, sid, acc.id),
           onRateLimit,
@@ -234,6 +247,9 @@ const JOB_MODULE: Record<JobKind, ModuleKey> = {
   verify_deadlines: 'deadlines',
   daily_plan: 'today',
   venue_match: 'publish',
+  student_voice: 'insights',
+  portal_scan: 'positions',
+  direction_fit: 'directions',
 }
 
 export function listJobs(): Job[] {
@@ -300,6 +316,52 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
     }
     case 'daily_plan':
       return { title: 'Bugünkü plan', prompt: `${JOB_PROMPTS.daily_plan()}\n${note}` }
+    case 'student_voice': {
+      const u = p.universityId ? get('universities', Number(p.universityId)) : undefined
+      const subject = u?.name ?? String(p.subject ?? p.note ?? '').trim()
+      if (!subject) throw new Error('Universitet seçilməyib (universityId və ya ad lazımdır)')
+      const prof = getProfile()
+      const focus = [
+        `The user: field ${prof.field || prof.directions.join(', ') || 'unknown'}; citizenship ${prof.citizenship || 'unknown'}. Give extra weight to what matters for them (their department/field, international students).`,
+        u?.city ? `City: ${u.city}.` : '',
+        p.note && u ? `User note: ${String(p.note)}` : '',
+      ].filter(Boolean).join('\n')
+      return { title: `Tələbə səsi: ${subject}`, prompt: JOB_PROMPTS.student_voice(subject, u?.id, focus) }
+    }
+    case 'direction_fit': {
+      const all = list('directions').filter((d) => d.status !== 'dropped')
+      const one = p.directionId ? get('directions', Number(p.directionId)) : undefined
+      const scope = one ? [one] : all
+      if (!scope.length) throw new Error('Əvvəl ən az bir istiqamət qrupu əlavə et')
+      const prof = getProfile()
+      const groups = scope.map((d) => `[A${d.id}] ${d.name}: ${d.description} (keywords: ${d.keywords.join(', ')}; user interest: ${d.interest ? `${d.interest}/5` : 'not rated'})`).join('\n')
+      const others = one ? all.filter((d) => d.id !== one.id).map((d) => `[A${d.id}] ${d.name}`).join(', ') : ''
+      const profile = [
+        `Field: ${prof.field || '-'}; stage: ${prof.stage || '-'}; target intake: ${prof.targetTerm || '-'}`,
+        `Interests: ${prof.interests || '-'}`,
+        `Background: ${prof.background || '-'}`,
+        `Education: ${prof.education || '-'}; languages: ${prof.languages || '-'}; citizenship: ${prof.citizenship || '-'}`,
+        `Target countries: ${prof.countries.join(', ') || 'any'}`,
+      ].join('\n')
+      return { title: one ? `İstiqamət analizi: ${one.name}` : 'İstiqamətlərin müqayisəsi', prompt: `${JOB_PROMPTS.direction_fit(groups, profile, others)}\n${note}` }
+    }
+    case 'portal_scan': {
+      const prof = getProfile()
+      const directions = prof.directions.length ? prof.directions : list('topics').filter((t) => t.status === 'active').map((t) => t.title)
+      if (!directions.length) throw new Error('Profildə ən az bir tədqiqat istiqaməti yaz (məs. NLP)')
+      const conds = prof.conditions.map((k) => CONDITION_BY_KEY[k]).filter(Boolean)
+      const u = p.universityId ? get('universities', Number(p.universityId)) : undefined
+      const criteria = [
+        `Research directions: ${directions.join('; ')}`,
+        `Target countries: ${prof.countries.join(', ') || 'any'}`,
+        `Hard conditions: ${conds.length ? conds.map((c) => `\n- [${c.key}] ${c.check}`).join('') : 'none'}`,
+        prof.conditionsNote ? `Extra conditions: ${prof.conditionsNote}` : '',
+        `Applicant: citizenship ${prof.citizenship || 'unknown'}; education ${prof.education || 'unknown'}; target intake ${prof.targetTerm || 'unknown'}`,
+        `Universities already on the board: ${list('universities').map((x) => `${x.name} (U${x.id})`).join(', ') || 'none'}`,
+      ].filter(Boolean)
+      const focus = [u ? `Focus on positions at ${u.name} (U${u.id}).` : '', note].filter(Boolean).join('\n')
+      return { title: u ? `PhD elanları: ${u.name}` : 'PhD portallarında elan axtarışı', prompt: JOB_PROMPTS.portal_scan(criteria.join('\n'), focus) }
+    }
     case 'venue_match': {
       const title = String(p.title ?? '').trim()
       if (!title) throw new Error('Məqalənin başlığı lazımdır')
@@ -330,7 +392,9 @@ async function runJob(job: Job & { abort?: AbortController }, params: Record<str
     const effort = job.kind === 'daily_plan' ? 'medium' : s.jobEffort
     const { text, error } = await withFailover(
       (acc, _retry, onRateLimit) => {
-        const q = query({ prompt, options: baseOptions({ effort, maxTurns: 90, abort: job.abort!, persist: false, account: acc }) })
+        // Job prompts are in English, so the language of what the user reads has to be stated.
+        const full = `${prompt}\n\nLanguage: write every summary, note and the final report in Azerbaijani; keep paper titles, venue names and quotes in their original language.`
+        const q = query({ prompt: full, options: baseOptions({ effort, maxTurns: 90, abort: job.abort!, persist: false, account: acc }) })
         return consume(q, {
           onRateLimit,
           onTool: (_id, name, input) => {

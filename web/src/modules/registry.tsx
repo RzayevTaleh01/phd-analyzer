@@ -1,6 +1,7 @@
 import type { FC } from 'react'
 import {
-  CalendarClock, Fingerprint, FileStack, Landmark, Library, Lightbulb, ListChecks, Network, Radar, Rocket, UsersRound,
+  BriefcaseBusiness, CalendarClock, Compass, Fingerprint, FileStack, Landmark, Library, Lightbulb, ListChecks, MessagesSquare, Network, Radar, Rocket,
+  UsersRound,
   type LucideIcon,
 } from 'lucide-react'
 import type { AppState, ModuleKey } from '../../../shared/types'
@@ -25,8 +26,21 @@ export const MODULES: ModuleDef[] = [
     icon: Fingerprint, accent: '#93ecff', Summary: S.ProfileSummary, count: () => '', action: 'Redaktə',
   },
   {
+    key: 'directions', idx: 'M-14', title: 'İstiqamətlər', desc: 'NLP, Adaptive learning və s.: hansı sənə daha uyğundur - sübutla müqayisə',
+    icon: Compass, accent: '#ffb547', Summary: S.DirectionsSummary, count: (s) => s.directions.length, action: 'Müqayisə et',
+  },
+  {
     key: 'universities', idx: 'M-02', title: 'Universitetlər', desc: 'Seçdiyin universitetlər və müraciət statusu',
     icon: Landmark, accent: '#2fd8ff', Summary: S.UniversitiesSummary, count: (s) => s.universities.length, action: 'Universitet əlavə et',
+  },
+  {
+    key: 'positions', idx: 'M-12', title: 'PhD elanları', desc: 'PhDPortal, FindAPhD, EURAXESS, DAAD, jobs.ac.uk və digər portallardan real elanlar',
+    icon: BriefcaseBusiness, accent: '#45f0a4', Summary: S.PositionsSummary,
+    count: (s) => s.positions.filter((p) => p.status !== 'dismissed').length, action: 'Elan tap',
+  },
+  {
+    key: 'insights', idx: 'M-13', title: 'Tələbə səsi', desc: 'Reddit-də o universitetdə oxuyanlar nə deyir: rəhbərlik, təqaüd, iş yükü, həyat',
+    icon: MessagesSquare, accent: '#a594ff', Summary: S.InsightsSummary, count: (s) => s.insights.length, action: 'Reddit analizi',
   },
   {
     key: 'deadlines', idx: 'M-03', title: 'Deadline-lar', desc: 'Universitet, təqaüd və konfrans deadline-ları (mənbə ilə)',

@@ -1,0 +1,9 @@
+# Never upload: local data (board, Claude logins, keys), dependencies, builds.
+data/
+node_modules/
+dist/
+.git/
+.claude/
+*.log
+.env
+.env.*

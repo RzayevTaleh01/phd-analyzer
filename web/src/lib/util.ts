@@ -85,6 +85,8 @@ export const STATUS_AZ: Record<string, string> = {
   key: 'Əsas',
   candidate: 'Namizəd',
   shortlisted: 'Seçilmiş',
+  found: 'Tapıldı',
+  dismissed: 'Atıldı',
   selected: 'Mövzum',
   discarded: 'Atıldı',
   suggested: 'Təklif',

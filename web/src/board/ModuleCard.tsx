@@ -1,6 +1,5 @@
-import { memo, type CSSProperties } from 'react'
-import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xyflow/react'
-import { Maximize2, ScanSearch } from 'lucide-react'
+import { memo, useEffect, useRef, type CSSProperties } from 'react'
+import { ChevronDown, Maximize2 } from 'lucide-react'
 import { MODULE_BY_KEY, type ModuleDef } from '../modules/registry'
 import { useStore } from '../store'
 
@@ -15,57 +14,61 @@ export function Corners() {
   )
 }
 
-export function GhostHandles() {
-  return (
-    <>
-      <Handle type="target" position={Position.Left} className="ghost" isConnectable={false} />
-      <Handle type="source" position={Position.Right} className="ghost" isConnectable={false} />
-    </>
-  )
-}
+// Open cards keep the height their summaries were designed for.
+const OPEN_H: Partial<Record<ModuleDef['key'], number>> = { today: 420 }
 
-function ModuleNode({ id, data, selected }: NodeProps) {
-  const def: ModuleDef = MODULE_BY_KEY[(data as { key: ModuleDef['key'] }).key]
+interface CardProps { moduleKey: ModuleDef['key']; open: boolean; onToggle: (k: ModuleDef['key']) => void }
+
+function ModuleCard({ moduleKey, open, onToggle }: CardProps) {
+  const def: ModuleDef = MODULE_BY_KEY[moduleKey]
+  const ref = useRef<HTMLDivElement>(null)
   const { state, live, setExpanded } = useStore()
-  const { fitView } = useReactFlow()
   const Icon = def.icon
   const count = def.count(state)
   const job = state.jobs.find((j) => j.module === def.key && j.status === 'running')
   const isLive = Boolean(live[def.key]) || Boolean(job)
 
+  // Bring a card into view when it opens, e.g. because Talvis started working on it.
+  useEffect(() => {
+    if (open) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [open])
+
   return (
-    <>
-      <NodeResizer isVisible={selected} minWidth={240} minHeight={150} />
-      <GhostHandles />
-      <div className={`mod ${isLive ? 'live' : ''}`} style={{ '--accent': def.accent } as CSSProperties}>
-        <Corners />
-        <div className="mod-head" onDoubleClick={() => fitView({ nodes: [{ id }], duration: 600, padding: 0.25 })}>
-          <span className="mod-idx">{def.idx}</span>
-          <span className="mod-icon"><Icon size={14} /></span>
-          <span className="mod-title">{def.title}</span>
-          {count !== '' && <span className="mod-count">{count}</span>}
-          <button className="mod-btn nodrag" title="Yaxınlaşdır" onClick={() => fitView({ nodes: [{ id }], duration: 600, padding: 0.25 })}>
-            <ScanSearch size={13} />
-          </button>
-          <button className="mod-btn nodrag" title="Genişləndir" onClick={() => setExpanded(def.key)}>
-            <Maximize2 size={13} />
-          </button>
-        </div>
-        {job && <div className="ticker-bar" />}
-        <div className="mod-body nowheel">
-          <def.Summary s={state} />
-        </div>
-        <div className="mod-foot">
-          {job ? (
-            <span className="mod-job ellip">{job.progress}</span>
-          ) : (
-            <span className="ellip">{def.desc}</span>
-          )}
-          <button className="btn sm ghost act nodrag" onClick={() => setExpanded(def.key)}>{def.action}</button>
-        </div>
+    <div
+      ref={ref}
+      className={`mod ${isLive ? 'live' : ''} ${open ? '' : 'closed'}`}
+      style={{ '--accent': def.accent, height: open ? OPEN_H[def.key] ?? 236 : undefined } as CSSProperties}
+    >
+      <Corners />
+      <div className="mod-head" onClick={() => onToggle(def.key)} title={open ? 'Bağla' : 'Aç'}>
+        <span className="mod-idx">{def.idx}</span>
+        <span className="mod-icon"><Icon size={14} /></span>
+        <span className="mod-title">{def.title}</span>
+        <span className="grow" />
+        {count !== '' && <span className="mod-count">{count}</span>}
+        <button className="mod-btn" title="Genişləndir" onClick={(e) => { e.stopPropagation(); setExpanded(def.key) }}>
+          <Maximize2 size={13} />
+        </button>
+        <span className="mod-chev"><ChevronDown size={14} /></span>
       </div>
-    </>
+      {job && <div className="ticker-bar" />}
+      {open && (
+        <>
+          <div className="mod-body">
+            <def.Summary s={state} />
+          </div>
+          <div className="mod-foot">
+            {job ? (
+              <span className="mod-job ellip">{job.progress}</span>
+            ) : (
+              <span className="ellip">{def.desc}</span>
+            )}
+            <button className="btn sm ghost act" onClick={() => setExpanded(def.key)}>{def.action}</button>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
-export default memo(ModuleNode)
+export default memo(ModuleCard)

@@ -1,32 +1,36 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import ModulePanel from '../panels/ModulePanel'
 import ChatCore from './ChatCore'
 import Graph from './Graph'
 
-const LS_KEY = 'talvis-dock-width'
-const MIN = 320
+// `fixed` says which side keeps the dragged width; the other side takes the rest.
+const SIDES = {
+  chat: { key: 'talvis-dock-width', min: 320, def: 440 },
+  board: { key: 'talvis-cards-width', min: 300, def: 380 },
+}
 
-function savedWidth(): number {
+function savedWidth(fixed: keyof typeof SIDES): number {
   try {
-    return Number(localStorage.getItem(LS_KEY)) || 440
+    return Number(localStorage.getItem(SIDES[fixed].key)) || SIDES[fixed].def
   } catch {
-    return 440
+    return SIDES[fixed].def
   }
 }
 
-/** Network view: knowledge graph on the left, the chat docked on the right. */
-export default function NetworkSplit() {
-  const [width, setWidth] = useState(savedWidth)
+/** A board on the left with the Talvis chat docked on the right, split by a draggable divider. */
+export function DockSplit({ children, fixed = 'chat' }: { children: ReactNode; fixed?: keyof typeof SIDES }) {
+  const [width, setWidth] = useState(() => savedWidth(fixed))
   const dragging = useRef(false)
+  const { key, min } = SIDES[fixed]
 
   useEffect(() => {
     try {
-      localStorage.setItem(LS_KEY, String(width))
+      localStorage.setItem(key, String(width))
     } catch {
       // storage unavailable: the width just won't persist
     }
-  }, [width])
+  }, [key, width])
 
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     dragging.current = true
@@ -34,25 +38,37 @@ export default function NetworkSplit() {
   }
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return
-    const max = Math.max(MIN, Math.min(820, window.innerWidth - 300))
-    setWidth(Math.max(MIN, Math.min(max, window.innerWidth - e.clientX)))
+    const max = Math.max(min, Math.min(820, window.innerWidth - 300))
+    const left = e.currentTarget.parentElement?.getBoundingClientRect().left ?? 0
+    const w = fixed === 'chat' ? window.innerWidth - e.clientX : e.clientX - left
+    setWidth(Math.max(min, Math.min(max, w)))
   }
   const onUp = () => {
     dragging.current = false
   }
 
   return (
-    <div className="net-split">
-      <div className="net-graph">
-        <ReactFlowProvider>
-          <Graph />
-        </ReactFlowProvider>
-        <ModulePanel />
-      </div>
-      <div className="net-splitter" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} title="Sürüşdür: çatın enini dəyiş" />
-      <aside className="net-chat" style={{ width }}>
+    <div className={`net-split fixed-${fixed}`}>
+      <div className="net-graph" style={fixed === 'board' ? { width } : undefined}>{children}</div>
+      <div
+        className="net-splitter" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
+        title={fixed === 'chat' ? 'Sürüşdür: çatın enini dəyiş' : 'Sürüşdür: kartların enini dəyiş'}
+      />
+      <aside className="net-chat" style={fixed === 'chat' ? { width } : undefined}>
         <ChatCore docked />
       </aside>
     </div>
+  )
+}
+
+/** Network view: knowledge graph on the left, the chat docked on the right. */
+export default function NetworkSplit() {
+  return (
+    <DockSplit>
+      <ReactFlowProvider>
+        <Graph />
+      </ReactFlowProvider>
+      <ModulePanel />
+    </DockSplit>
   )
 }

@@ -1,6 +1,6 @@
 import type { AppState } from '../../shared/types'
 
-export type Coll = 'topics' | 'universities' | 'groups' | 'researchers' | 'papers' | 'deadlines' | 'tasks' | 'gaps' | 'venues' | 'docs'
+export type Coll = 'topics' | 'universities' | 'groups' | 'researchers' | 'papers' | 'deadlines' | 'tasks' | 'gaps' | 'venues' | 'docs' | 'positions' | 'insights' | 'directions'
 
 export async function api<T = unknown>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -36,6 +36,9 @@ export const emptyState: AppState = {
   gaps: [],
   venues: [],
   docs: [],
+  positions: [],
+  insights: [],
+  directions: [],
   activity: [],
   jobs: [],
 }
@@ -105,4 +108,40 @@ export interface Settings {
   openalexKey: string
   s2Key: string
   mailto: string
+  browser: string
+  browserVisible: boolean
+  redditClientId: string
+  redditSecret: string
+  trdeskUrl: string
+  trdeskKey: string
+  trdeskPlan: string
+}
+
+export interface PortalInfo {
+  key: string
+  name: string
+  note: string
+  direct: boolean
+}
+
+export interface PortalResult {
+  portal: string
+  name: string
+  searchUrl: string
+  mode: 'direct' | 'websearch'
+  listings: { portal: string; title: string; url: string; snippet?: string; university?: string; city?: string; deadline?: string; funding?: string }[]
+  webQuery?: string
+  error?: string
+}
+
+export interface RedditPost {
+  id: string
+  subreddit: string
+  title: string
+  author?: string
+  url: string
+  created?: string
+  score?: number
+  comments?: number
+  text?: string
 }

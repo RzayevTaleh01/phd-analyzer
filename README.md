@@ -43,13 +43,18 @@
 | What should I do today? | Builds a daily plan from deadlines, unread papers and professors you have not contacted yet |
 | Research gaps | Scans the literature across OpenAlex, Semantic Scholar and arXiv, records each gap with evidence papers and checks whether it is already solved |
 | Where should I publish? | Suggests real journals and conferences where similar work appears, with h-index, OA/APC, DOAJ status and predatory-journal warnings |
+| NLP or Adaptive learning: which fits me? | Splits the whole board into research direction groups and compares them on eight weighted criteria (personal fit, your own interest, PhD opportunities, supervisors, field momentum, novelty, feasibility, career), each score with evidence |
+| Which PhD positions are open for me? | Searches PhD portals (DAAD, jobs.ac.uk, AcademicPositions directly; PhDPortal, FindAPhD, EURAXESS, ScholarshipPortal, Nature Careers through a site-restricted web search), reads each listing and saves funding, supervisor and deadline as the listing states them |
+| What do students at this university say? | Analyses Reddit (the university's own subreddit, r/PhD, r/gradadmissions, r/AskAcademia): supervision, stipend vs cost of living, workload, international-student experience, with a quote and link for every point |
+| The fact is inside a PDF (paper full text, doctoral regulations, fee schedule) | `read_pdf` downloads it, extracts the text page by page and quotes the exact passage with its page number; for a library paper it finds the open-access copy itself (OpenAlex locations, arXiv, the landing page's `citation_pdf_url`). `browse_page` reads PDF links too |
+| The official page only loads with JavaScript | Talvis reads it with a real browser (the Edge or Chrome already on the computer), including closed accordions and tabs where admission rules and deadlines often sit |
 | SOP, research proposal, emails to professors | Drafts and reviews documents using the real data on your board |
 
 Core principle: **nothing is made up.** Papers, authors, venues, rankings and deadlines come only from tool results or official pages (see the [integrity rules](#integrity-rules) below).
 
 ## Interface
 
-- **Modules view:** the Talvis chat in the center, surrounded by 11 module cards arranged in neural-network layers. Cards are connected with lines; when Talvis works on a module, that card and its path to the core light up. Cards can be dragged, resized and zoomed; the layout is remembered.
+- **Modules view:** the Talvis chat in the center, surrounded by 14 module cards arranged in neural-network layers. Cards are connected with lines; when Talvis works on a module, that card and its path to the core light up. Cards can be dragged, resized and zoomed; the layout is remembered.
 - **Network view:** every object (you, topics, universities, groups, researchers, papers, gaps, venues, deadlines) shown as a knowledge graph on the left, with the Talvis chat docked on the right. Drag the divider to resize the chat; module panels open over the graph and never cover the chat.
 - **HUD:** date, time, countdown to the next deadline, today's tasks, library size and the active Claude account.
 - Design: dark "Jarvis"-style HUD with Inter and JetBrains Mono fonts (Azerbaijani characters supported).
@@ -74,6 +79,7 @@ These are not just instructions; the tools themselves enforce them:
 | No "verified" deadline without a source | `add_deadline` requires an official `sourceUrl` for `verified=true` |
 | No ranking or language requirement without a source | `add_university` requires `rankSource` for `rankLabel` and `langCertSource` for `langCert` |
 | DOI check | `verify_doi` confirms on Crossref that a DOI actually exists |
+| No invented links | `save_position` and `add_insight` accept only URLs that appeared in a tool result (portal search, browser, Reddit, WebSearch, WebFetch) or that you pasted in the chat |
 
 ## Connected services and technologies
 
@@ -83,6 +89,9 @@ These are not just instructions; the tools themselves enforce them:
 |---|---|---|---|
 | **Claude** (Anthropic) | The brain of Talvis: chat, planning, analysis, gap finding | Not needed: sign in with a Claude subscription (Pro/Max) via OAuth | Claude Agent SDK; Claude Opus 5.5 by default, Claude Sonnet 5.5 as fallback. Multiple accounts supported |
 | **Claude WebSearch / WebFetch** | Official university pages, rankings, language requirements, deadlines, calls for papers | Included with the Claude sign-in | Used by Talvis only |
+| **Local browser** (Edge / Chrome via `playwright-core`) | Pages that need JavaScript (SPAs, portals, accordions) | Not needed | Nothing is downloaded; `npm run browser:install` adds Playwright's Chromium if neither browser is installed. Sites that answer with a bot check are reported as blocked, never worked around |
+| **[Reddit](https://www.reddit.com/dev/api/)** | Student voice: what students say about a university | Optional (free "script" app) | Without a key the public RSS feeds are used: a few requests a minute, no scores. With a key (Settings) the official API gives scores, comment counts and full text |
+| **PhD portals** | Positions and programs | Not needed | DAAD (official JSON API), jobs.ac.uk, AcademicPositions are searched directly; portals whose robots.txt disallows automated search (PhDPortal, EURAXESS) or that sit behind a bot check (FindAPhD) are reached through a `site:` web search, and single listings are read on request |
 | **[OpenAlex](https://openalex.org)** | Paper search, citations, institution search, "who works on this", researcher publications, venue statistics (h-index, OA, DOAJ, APC), topic trends | Optional (free) | Without a key there is a small free daily budget per IP; get a free key at [openalex.org/settings/api](https://openalex.org/settings/api) |
 | **[Semantic Scholar](https://www.semanticscholar.org/product/api)** | Paper search, TLDR summaries, similar-paper recommendations | Optional | Strict rate limits without a key; the system queues requests and retries |
 | **[arXiv API](https://info.arxiv.org/help/api/index.html)** | The newest preprints | Not needed | Respects the one-request-per-3-seconds rule; when arXiv blocks requests, arXiv papers come from OpenAlex's arXiv index instead |
@@ -115,7 +124,7 @@ flowchart LR
     API["REST API + SSE"]
     DB[("SQLite<br/>data/phd.db")]
     Runner["Talvis runner<br/>chat + background jobs"]
-    Tools["27 MCP tools"]
+    Tools["48 MCP tools"]
     Accounts["Account manager<br/>automatic switching"]
   end
   subgraph Claude["Claude: your subscription"]
@@ -156,6 +165,9 @@ How a question flows: you type in the chat → the server sends it to Talvis tog
 | M-09 | **Məqalələr** (Papers) | Real papers, abstract, TLDR, reading status, notes | Search OpenAlex / Semantic Scholar / arXiv; explain; find related work |
 | M-10 | **Research gap** | Gap, evidence papers, novelty and feasibility scores, methods | Real gap analysis; turn into research questions; re-check |
 | M-11 | **Nəşr** (Publish) | Journals and conferences, fit, h-index, OA/APC, DOAJ | AI venue matching; quick statistical search |
+| M-12 | **PhD elanları** (PhD positions) | Positions and programs from portals: university, funding, supervisor, deadline, status | Portal search (pick portals, field, country); "AI: scan all portals for my profile"; save; fit check |
+| M-14 | **İstiqamətlər** (Directions) | Direction groups (name, keywords, status, your interest 1-5) and Talvis' fit analysis per group | Side-by-side comparison table; "AI: explore and compare"; analyse one group; filter the board to a group |
+| M-13 | **Tələbə səsi** (Student voice) | Per-university analysis of what students say: summary, sentiment, themes, evidence quotes with links, caveats | "AI: what do students say on Reddit?" per university (also from the Universities table); direct Reddit search |
 
 ### Profile criteria
 
@@ -178,7 +190,10 @@ Long tasks run in the background with their own instructions, without blocking t
 | `gap_analysis` | Topics, Research gap | Searches three sources with several phrasings, checks the trend, drafts 5-8 candidate gaps, tests each one with a "is this already solved?" search, then saves 3-6 gaps with evidence papers |
 | `verify_deadlines` | Deadlines, Universities | Checks dates on official admission and scholarship pages, updates them and adds missing ones |
 | `daily_plan` | Today | 3-6 concrete tasks with time estimates, based on deadlines and the board |
+| `direction_fit` | Directions | For each direction group (or one): trend, literature, supervisors, positions, novelty and personal fit with the same depth; saves items into the group, scores 8 criteria with evidence, and reports which group fits best and whether a hybrid fits better |
 | `venue_match` | Publish | Real venues for a title and abstract: scope, review time, APC, next conference deadline |
+| `student_voice` | Student voice, Universities | Finds the university's subreddit, runs 5-8 Reddit searches, reads the most relevant threads, groups them into themes and saves one evidence-backed insight with caveats (sample size, dates) |
+| `portal_scan` | PhD positions | Searches every portal for each research direction, reads the promising listings, saves the ones that pass your criteria and adds deadlines due within 120 days |
 
 ## Talvis tools
 
@@ -189,7 +204,26 @@ Talvis can only use these tools plus Claude's WebSearch / WebFetch (file system,
 | Read the board | `get_overview`, `list_items`, `get_item` |
 | Write to the board | `save_profile`, `add_topic`, `add_university`, `add_deadline`, `add_task`, `add_group`, `add_researcher`, `save_papers`, `add_gap`, `add_venue`, `save_document`, `update_item`, `delete_item` (only when you ask) |
 | Real research | `search_papers`, `paper_details`, `related_papers` (citing works, references, similar papers), `find_institution`, `find_researchers_at`, `search_authors`, `researcher_works`, `find_venues`, `verify_doi`, `topic_trend` |
+| Direction groups | `save_direction`, `tag_directions`, `save_direction_analysis` |
+| TRDesk | `trdesk_plans`, `trdesk_plan`, `trdesk_sync`, `trdesk_add_tasks`, `trdesk_update_task`, `trdesk_task_done`, `trdesk_delete_task` (only when you ask), `trdesk_day_note`, `trdesk_manage_plan`, `trdesk_agenda` |
+| The web | `read_pdf` (PDF from a URL, or a library paper's open-access full text by its P id; `find` returns passages with page numbers), `browse_page` (any page, real browser when needed; `find` pulls matching paragraphs, `linkFilter` follows sub-pages, JSON-LD job postings/programs), `reddit_search`, `reddit_thread`, `find_subreddits`, `portal_search`, `save_position`, `add_insight` |
 | Background | `start_job` |
+
+## Research direction groups
+
+The strip under the HUD (**İstiqamət: Hamısı · NLP · Adaptive learning · Müqayisə**) filters the whole board to one direction group: cards, panels, the network view and the HUD. Talvis is told which group you are looking at and works inside it.
+
+- **Grouping** (`shared/directions.ts`): an item's own text decides (paper title and abstract, a researcher's OpenAlex concepts, a university's fit note): the group with the most keyword matches, or both when the scores are close (hybrids). Only when the text says nothing does an item inherit from its topics; a university belongs to every group with real presence among its researchers, groups and positions. Talvis can override a single item with `tag_directions`, and group keywords are editable in the panel.
+- **Comparison** (M-14): rate your interest with stars (it is never guessed by the AI), then "AI: istiqamətləri araşdır və müqayisə et" runs the `direction_fit` job: the same depth of search for every group (trend, key papers, supervisors at your target universities, open positions, open problems), saves what it finds into that group and scores it with evidence. Tasks, documents and deadlines without a university stay visible in every group.
+- Two groups (NLP, Adaptive learning) are created on first start; add, rename, drop or delete groups in the panel.
+
+## TRDesk (task manager)
+
+Talvis manages a **"PhD plan"** in TRDesk through its agent API, so PhD work shows up in the TRDesk widget next to everything else.
+
+- Key: TRDesk → Ayarlar → "Claude API (agent)" → "Yeni açar" (`trd_…`), then Profil → Ayarlar → **TRDesk açarı**. The address defaults to the deployed TRDesk; the plan field takes a plan name or id (default "PhD plan").
+- **Sinxronlaşdır** (Today panel) or `trdesk_sync`: creates the PhD plan if it is missing, puts every open deadline (type W) and every dated board task on its date in TRDesk, carries unfinished overdue tasks to today, and syncs completion both ways (ticked in TRDesk = done on the board and the other way round). Each TRDesk task carries a `Talvis D12` / `Talvis K7` marker in its section, so running it again never duplicates.
+- In the chat Talvis can read and change any plan (also the study plan "Azərbaycan NLP Phd"): add tasks on dates with type and minutes, move, complete, write day notes, create or archive plans. Deleting tasks or plans happens only when you ask.
 
 ## Claude accounts and automatic switching
 
@@ -252,6 +286,12 @@ The sign-in is remembered on this computer. You can also sign in from a terminal
 | `npm run dev` | Development mode: API on 5179 (auto-restart) + UI on 5178 (live reload) |
 | `npm run build` | Builds only the UI into `dist/` |
 | `npm run typecheck` | TypeScript check |
+| `npm run fetch -- page <url> [--browser] [--find "words"] [--links] [--json] [--out file]` | Read any page from the terminal, with the real browser when it needs JavaScript |
+| `npm run fetch -- reddit "<query>" [--sub PhD] [--sort top] [--time year]` | Reddit search; `fetch -- thread <url>` reads a thread, `fetch -- subs "<name>"` finds subreddits |
+| `npm run fetch -- portals "<field>" [--portal daad,jobsacuk] [--country Germany]` | PhD portal search |
+| `npm run fetch -- pdf <url> [--pages 1-3] [--find "words"]` | Read a PDF from the terminal |
+| `npm run browser:check` | Shows which browser works on this computer |
+| `npm run browser:install` | Downloads Playwright's Chromium (only if neither Edge nor Chrome is installed) |
 
 ### Environment variables (optional)
 
@@ -260,6 +300,31 @@ The sign-in is remembered on this computer. You can also sign in from a terminal
 | `PORT` | `5179` | Server port |
 | `PHD_DATA_DIR` | `./data` | Data folder (point it to a separate folder for testing) |
 | `PHD_USE_API_KEY` | - | When `1`, uses `ANTHROPIC_API_KEY` instead of the subscription |
+
+## Deploying to Google Cloud Run
+
+The deployed Talvis keeps everything in **PostgreSQL** (e.g. Neon) and is protected by a **password**.
+
+- **Data:** with `DATABASE_URL` set, `server/start.ts` fills a local SQLite working copy from Postgres on start and `server/pgsync.ts` mirrors every write back within about a second (tables `talvis_*`). The Claude sign-ins made on the server (`data/accounts/*`) are backed up there too, so a restart does not log you out. Run **one instance** per database. `npm run db:push` copies the local board into an empty Postgres (`-- --force` overwrites); `npm run db:push -- --logins-only` uploads the Talvis Claude logins (`data/accounts/*`, never `~/.claude`) so the cloud starts signed in; a login used in two places may ask to sign in again on one side after its token refreshes.
+- **Access:** with `APP_PASSWORD` set, every `/api` route needs the login cookie (30 days, httpOnly); 8 wrong tries per 10 minutes per address are allowed.
+- **Container:** `Dockerfile` (Playwright image: Node + Chromium for JavaScript pages and PDFs). `.gcloudignore` keeps `data/` (keys, logins) out of the upload.
+
+One-time secrets (project `trdesk-510213`, service account `50524487911-compute@developer.gserviceaccount.com`):
+
+```bash
+printf '%s' 'postgresql://USER:PASSWORD@HOST/neondb?sslmode=verify-full' | gcloud secrets create talvis-database-url --replication-policy=automatic --data-file=-
+printf '%s' 'YOUR-LOGIN-PASSWORD' | gcloud secrets create talvis-app-password --replication-policy=automatic --data-file=-
+gcloud secrets add-iam-policy-binding talvis-database-url --member=serviceAccount:50524487911-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+gcloud secrets add-iam-policy-binding talvis-app-password --member=serviceAccount:50524487911-compute@developer.gserviceaccount.com --role=roles/secretmanager.secretAccessor
+```
+
+Deploy (free tier: scales to zero, at most one instance):
+
+```bash
+gcloud run deploy talvis-phd --source . --region us-east4 --memory 2Gi --cpu 1 --min-instances 0 --max-instances 1 --timeout 3600 --allow-unauthenticated --set-secrets DATABASE_URL=talvis-database-url:latest,APP_PASSWORD=talvis-app-password:latest --quiet
+```
+
+Free-tier notes: Cloud Run bills by request time, so CPU runs while the board is open in a browser (its live event stream counts as a request). Background jobs keep going while the tab is open; close the tab and they pause until the next visit. The free monthly allowance is about 50 hours of open board at 2 GiB / 1 vCPU; the container image (~2 GB in Artifact Registry) costs a few cents a month.
 
 ## First steps
 
@@ -283,6 +348,10 @@ Profile → Settings:
 | Semantic Scholar key | key | empty |
 | OpenAlex mailto | email | empty |
 | Automatic account switching | on / off | on |
+| Browser for JavaScript pages | auto (Edge, then Chrome), Edge, Chrome, Chromium | auto |
+| Show the browser window | on / off (for checking what it sees) | off |
+| TRDesk key / address / plan | `trd_…` key, TRDesk URL, plan name or id | empty / deployed TRDesk / "PhD plan" |
+| Reddit app client id / secret | from [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) ("script" app) | empty (public RSS) |
 
 Model availability depends on your Claude plan; if the selected model is not available, the fallback model takes over.
 
@@ -291,7 +360,8 @@ Model availability depends on your Claude plan; if the selected model is not ava
 - All board data stays **on this computer only**: `data/phd.db` (SQLite).
 - Claude sign-ins: Account 1 in the default Claude folder (`~/.claude`), extra accounts under `data/accounts/`. Do not share these folders.
 - The server listens on `127.0.0.1` only; other devices on the network cannot connect to it.
-- What leaves your computer: chat messages and the board summary go to Claude (under Anthropic's terms); only search queries go to the scholarly APIs; API keys you enter are sent only to their own service.
+- What leaves your computer: chat messages and the board summary go to Claude (under Anthropic's terms); only search queries go to the scholarly APIs, Reddit and the portals; pages are opened by the local browser like any visit; API keys you enter are sent only to their own service.
+- Student-voice analyses quote public posts with links and do not name or profile individual Reddit users.
 - `data/`, `dist/` and `node_modules/` are listed in `.gitignore`.
 
 ## Project structure
@@ -302,21 +372,31 @@ Model availability depends on your Claude plan; if the selected model is not ava
 │   ├── db.ts               SQLite schema, CRUD, profile, settings, chat, API cache
 │   ├── events.ts           SSE broadcasting
 │   ├── library.ts          Saving search results without duplicates
+│   ├── integrations/
+│   │   └── trdesk.ts       TRDesk agent API client and board <-> PhD plan sync
+│   ├── browser/
+│   │   ├── render.ts       Real browser (Edge/Chrome via playwright-core), text/links/JSON-LD extraction
+│   │   ├── read.ts         HTTP first, browser when the page needs JavaScript, PDFs to pdf.ts
+│   │   ├── pdf.ts          PDF download (landing page -> PDF link) and text extraction (unpdf)
+│   │   └── robots.ts       robots.txt check for automated listing searches
 │   ├── agent/
 │   │   ├── runner.ts       Chat, background jobs, account failover
 │   │   ├── accounts.ts     Claude accounts, status, usage, limits
 │   │   ├── login.ts        In-app Claude sign-in
-│   │   ├── tools.ts        27 MCP tools
+│   │   ├── tools.ts        48 MCP tools
 │   │   ├── prompts.ts      Talvis and job instructions
 │   │   └── overview.ts     Board summary (sent with every message)
 │   └── research/
 │       ├── openalex.ts     OpenAlex client
 │       ├── scholar.ts      Semantic Scholar, arXiv, Crossref
+│       ├── reddit.ts       Reddit (official API with a key, public RSS without)
+│       ├── portals.ts      PhD portals: DAAD, jobs.ac.uk, AcademicPositions, EURAXESS, PhDPortal, FindAPhD, ...
 │       ├── index.ts        Combined search and de-duplication
 │       └── http.ts         Request queue, retries, cache
 ├── shared/
 │   ├── types.ts            Shared data model
-│   └── criteria.ts         Profile criteria and conditions
+│   ├── criteria.ts         Profile criteria and conditions
+│   └── directions.ts       Direction groups: grouping of items, filtered board, comparison criteria
 ├── web/
 │   ├── index.html
 │   └── src/
@@ -325,6 +405,8 @@ Model availability depends on your Claude plan; if the selected model is not ava
 │       ├── board/          Board, neural edges, cards, chat, network view
 │       ├── modules/        Card summaries and module registry
 │       └── panels/         Module panels and Claude accounts
+├── scripts/
+│   └── fetch.ts            Terminal access to the page reader, Reddit and portals
 ├── Talvis.bat              Windows launcher
 ├── LICENSE                 MIT
 └── README.md
@@ -338,9 +420,12 @@ Everything lives under `http://localhost:5179/api`:
 |---|---|---|
 | GET | `/state` | Full board state |
 | GET | `/events` | SSE: `changed`, `activity`, `pulse`, `job`, `chat`, `claude`, `login`, `accounts` |
-| GET / POST / PATCH / DELETE | `/items/:coll[/:id]` | `topics`, `universities`, `groups`, `researchers`, `papers`, `deadlines`, `tasks`, `gaps`, `venues`, `docs` |
+| GET / POST / PATCH / DELETE | `/items/:coll[/:id]` | `topics`, `universities`, `groups`, `researchers`, `papers`, `deadlines`, `tasks`, `gaps`, `venues`, `docs`, `positions`, `insights` |
 | PUT | `/profile`, `/settings` | Profile and settings |
 | GET | `/research/papers`, `/research/institutions`, `/research/researchers`, `/research/author-works`, `/research/venues`, `/research/trend` | Direct research queries |
+| GET | `/portals`, `/portals/search`, `/reddit/search`, `/reddit/thread`, `/reddit/subreddits`, `/browse`, `/browser/status` | Web sources |
+| POST | `/positions` | Save a portal listing |
+| POST / GET / PUT | `/trdesk/sync`, `/trdesk/upcoming`, `/trdesk/tasks/:id/done` | TRDesk PhD plan |
 | POST | `/research/save-paper`, `/research/save-researcher`, `/research/save-venue`, `/universities/resolve` | Save results |
 | GET / POST | `/chat`, `/chat/stop`, `/chat/new` | Chat |
 | POST | `/jobs`, `/jobs/:id/stop` | Background jobs |
@@ -358,6 +443,10 @@ Everything lives under `http://localhost:5179/api`:
 | Semantic Scholar 429 | The system waits and retries; get a key for regular use |
 | Port already in use | Close the old process or run `PORT=5180 npm start` |
 | `better-sqlite3` fails to install | Use Node 20 LTS (prebuilt binaries exist); newer Node versions may need Visual Studio Build Tools |
+| A page "loads with JavaScript" / WebFetch returns nothing | Talvis switches to `browse_page`; check `npm run browser:check`. If no browser is found, install Edge/Chrome or run `npm run browser:install` |
+| "sayt bloklayır" (site blocks) on a portal | The site shows a bot check (Cloudflare) or its robots.txt disallows automated search. Use the "Portalda aç" link to open it yourself; Talvis falls back to web search |
+| A PDF "is not available" | Paywalled papers have no open copy; Talvis says so and uses the abstract. Scanned PDFs without a text layer are reported as scans (no OCR) |
+| Reddit 429 / slow | The public feeds allow only a few requests a minute; the system waits for the reset. Add a free Reddit app key in Settings for a higher limit |
 | The board looks empty | Check that the server is running (a red "Server ilə əlaqə yoxdur", "No connection to the server", notice appears at the top) and reload the page |
 
 ## License
