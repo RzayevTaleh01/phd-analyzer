@@ -74,7 +74,7 @@ export function buildOverview(): string {
   L.push('', `## UNIVERSITIES (${unis.length})`)
   for (const u of unis)
     L.push(
-      `[U${u.id}] ${u.name} (${u.countryCode || u.country || '?'})${dTag('universities', u.id)} | status: ${u.status} | rank: ${u.rankLabel ?? '?'} | language test: ${u.langCert ?? 'unknown'}${u.langCertNote ? ` (${u.langCertNote.slice(0, 100)})` : ''} | openalex: ${u.openalexId ?? '-'} | researchers: ${researchers.filter((r) => r.universityId === u.id).length}${u.fitNote ? ` | fit: ${u.fitNote.slice(0, 140)}` : ''}${u.notes ? ` | notes: ${u.notes.slice(0, 120)}` : ''}`,
+      `[U${u.id}] ${u.name} (${u.countryCode || u.country || '?'})${dTag('universities', u.id)} | status: ${u.status} | rank: ${u.rankLabel ?? '?'} | admission chance: ${u.admitChance !== undefined ? `${u.admitChance}% (estimate ${u.admitAt?.slice(0, 10) ?? ''})` : 'not estimated'} | language test: ${u.langCert ?? 'unknown'}${u.langCertNote ? ` (${u.langCertNote.slice(0, 100)})` : ''} | openalex: ${u.openalexId ?? '-'} | researchers: ${researchers.filter((r) => r.universityId === u.id).length}${u.fitNote ? ` | fit: ${u.fitNote.slice(0, 140)}` : ''}${u.notes ? ` | notes: ${u.notes.slice(0, 120)}` : ''}`,
     )
 
   const open = deadlines.filter((d) => d.status === 'open').sort((a, b) => a.dueDate.localeCompare(b.dueDate))

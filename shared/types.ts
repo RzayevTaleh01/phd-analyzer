@@ -86,6 +86,13 @@ export interface University {
   langCertSource?: string
   /** How the university meets the profile criteria and directions. */
   fitNote?: string
+  /** Talvis' estimate of this applicant's PhD admission chance, 0-100 (an estimate, not a fact). */
+  admitChance?: number
+  /** The decisive factors behind the estimate and what would raise it. */
+  admitNote?: string
+  /** Official page or statistic the estimate leans on most. */
+  admitSource?: string
+  admitAt?: string
   createdAt: string
 }
 

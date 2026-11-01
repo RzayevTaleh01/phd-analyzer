@@ -18,6 +18,8 @@ export interface ModuleDef {
   Summary: FC<{ s: AppState }>
   count: (s: AppState) => number | string
   action: string
+  /** The expanded panel takes the full board width. */
+  wide?: boolean
 }
 
 export const MODULES: ModuleDef[] = [
@@ -31,7 +33,7 @@ export const MODULES: ModuleDef[] = [
   },
   {
     key: 'universities', idx: 'M-02', title: 'Universitetlər', desc: 'Seçdiyin universitetlər və müraciət statusu',
-    icon: Landmark, accent: '#2fd8ff', Summary: S.UniversitiesSummary, count: (s) => s.universities.length, action: 'Universitet əlavə et',
+    icon: Landmark, accent: '#2fd8ff', Summary: S.UniversitiesSummary, count: (s) => s.universities.length, action: 'Universitet əlavə et', wide: true,
   },
   {
     key: 'positions', idx: 'M-12', title: 'PhD elanları', desc: 'PhDPortal, FindAPhD, EURAXESS, DAAD, jobs.ac.uk və digər portallardan real elanlar',

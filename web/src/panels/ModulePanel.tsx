@@ -40,7 +40,7 @@ export default function ModulePanel() {
   return (
     <>
       <div className="panel-veil" onClick={() => setExpanded(null)} />
-      <section className="panel" style={{ '--accent': def.accent } as CSSProperties}>
+      <section className={`panel ${def.wide ? 'wide' : ''}`} style={{ '--accent': def.accent } as CSSProperties}>
         <Corners />
         <div className="panel-head">
           <span style={{ color: def.accent, display: 'flex' }}><Icon size={20} /></span>

@@ -250,6 +250,7 @@ const JOB_MODULE: Record<JobKind, ModuleKey> = {
   student_voice: 'insights',
   portal_scan: 'positions',
   direction_fit: 'directions',
+  admission_chance: 'universities',
 }
 
 export function listJobs(): Job[] {
@@ -361,6 +362,24 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
       ].filter(Boolean)
       const focus = [u ? `Focus on positions at ${u.name} (U${u.id}).` : '', note].filter(Boolean).join('\n')
       return { title: u ? `PhD elanları: ${u.name}` : 'PhD portallarında elan axtarışı', prompt: JOB_PROMPTS.portal_scan(criteria.join('\n'), focus) }
+    }
+    case 'admission_chance': {
+      const one = p.universityId ? get('universities', Number(p.universityId)) : undefined
+      const unis = one ? [one] : list('universities')
+      if (!unis.length) throw new Error('Əvvəl universitet əlavə et')
+      const prof = getProfile()
+      const scope = unis
+        .map((u) => `[U${u.id}] ${u.name} (${u.countryCode || u.country || '?'}) | rank: ${u.rankLabel ?? '?'} | language test: ${u.langCert ?? 'unknown'} | openalex: ${u.openalexId ?? '-'} | researchers on board: ${list('researchers').filter((r) => r.universityId === u.id).length}${u.admitChance !== undefined ? ` | earlier estimate: ${u.admitChance}%` : ''}`)
+        .join('\n')
+      const conds = prof.conditions.map((k) => CONDITION_BY_KEY[k]?.short ?? k)
+      const applicant = [
+        `Field: ${prof.field || '-'}; directions: ${prof.directions.join(', ') || '-'}; target intake: ${prof.targetTerm || '-'}`,
+        `Education: ${prof.education || '-'}`,
+        `Background: ${prof.background || '-'}`,
+        `Languages: ${prof.languages || '-'}; citizenship: ${prof.citizenship || '-'}`,
+        `Conditions the user needs: ${conds.join(', ') || 'none'}`,
+      ].join('\n')
+      return { title: one ? `Qəbul şansı: ${one.name}` : 'Qəbul şansının qiymətləndirilməsi', prompt: `${JOB_PROMPTS.admission_chance(scope, applicant)}\n${note}` }
     }
     case 'venue_match': {
       const title = String(p.title ?? '').trim()

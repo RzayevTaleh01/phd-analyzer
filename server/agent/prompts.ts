@@ -39,6 +39,7 @@ Accuracy rules for web data:
 - Rankings: quote the rank exactly as published, with the ranking name, edition year and URL. Bands (e.g. 201-250) stay bands.
 - Language tests and other conditions: decide only from official university pages. For language-test waivers, check whether the rule applies to this user (citizenship, language of previous degree) and say what is still uncertain.
 - Save universities with add_university including rank fields, langCert fields and a short fitNote. For a full criteria-based search, use start_job kind=find_universities.
+- Admission chance: the board shows an estimated chance (0-100) per university, sorted by it. Set it with set_admission_chance from official requirements, published acceptance numbers, research fit, funding and the user's record, with the reasons; call it an estimate, never a prediction. To estimate or refresh all of them, use start_job kind=admission_chance.
 
 # Deadlines
 - Only take deadline dates from official university/funder/conference pages found with WebSearch and read with WebFetch. Save them with add_deadline including sourceUrl.
@@ -80,8 +81,9 @@ Procedure (background job; the user is not watching the chat):
 2. Research fit: resolve each candidate with find_institution, then call find_researchers_at for each research direction with precise English queries (e.g. "natural language processing", "adaptive learning", "intelligent tutoring systems"). Keep candidates with currently affiliated, recently publishing researchers in at least one direction.
 3. Conditions: check every condition on official university pages (doctoral/graduate admissions, language requirements, funding, fees). For no_language_cert decide not_required, waiver (and whether the waiver applies to this applicant given citizenship and previous degree language) or required. Never guess; if the official page is unclear, use unknown and say why.
 4. Save each university that passes the hard filters with add_university: status "researching", rank, rankLabel, rankSource, langCert, langCertNote, langCertSource, website, and a fitNote (strong directions + 1-2 researcher names + conditions met). Aim for 6-12 good matches spread across the target countries. Do not save universities that fail a hard condition.
+   Also give admitChance (0-100) and admitNote: your estimate of this applicant's admission chance from what you found (entry requirements vs the applicant's degrees and grades, competition and published acceptance numbers, matching researchers, funded places). Bands: 0-19 very low, 20-39 low, 40-64 moderate, 65+ good; be conservative, funded PhD places are competitive.
 5. For the 3 strongest matches, save their 2 most relevant researchers with add_researcher (openalexId, universityId, relevance 0-100).
-6. Finish with a short Azerbaijani report: a table (university, country, rank + source, language test status, strong directions with researcher names, why it fits), then the strong candidates you excluded and the reason (e.g. IELTS required without waiver, rank outside the limit).
+6. Finish with a short Azerbaijani report: a table sorted by admission chance (university, country, rank + source, language test status, estimated chance, strong directions with researcher names, why it fits), then the strong candidates you excluded and the reason (e.g. IELTS required without waiver, rank outside the limit).
 Never invent a rank, a requirement or a URL.`,
 
   gap_analysis: (topic: string, topicId: number, keywords: string, extra: string) => `Run a full, evidence-based research gap analysis for the topic "${topic}" (board id T${topicId}, keywords: ${keywords || '-'}). ${extra}
@@ -170,6 +172,28 @@ Procedure for EACH group (background job; the user is not watching the chat). Us
 
 Finally, a short Azerbaijani report: a comparison table (criterion x group, with the overall score), which group fits best and why in 3-4 sentences, what would change the verdict, whether a hybrid fits better (and which concrete topic), and 3 next steps for the next two weeks. If the user has not rated their interest, ask them to rate it (1-5) in the Directions panel, because it changes the result.
 Never invent a number, a paper, a position or a person; scores must follow from what you found.`,
+
+  admission_chance: (scope: string, applicant: string) => `Estimate the user's realistic chance of being admitted to a PhD at each university below, and save it on the board.
+
+UNIVERSITIES
+${scope}
+
+THE APPLICANT
+${applicant}
+
+Procedure (background job; the user is not watching the chat):
+1. For each university, find the official doctoral admission route for the user's field (WebSearch, then WebFetch or browse_page): structured programme or supervisor-first, entry requirements (master's degree, minimum grade and how foreign grades are converted, research proposal, publications), language rules, funded places per year, and any published numbers (applicants, admitted, acceptance rate, positions per call). Note the year of every number.
+2. Research fit from the board: how many currently affiliated researchers match the user's directions (list_items researchers; find_researchers_at when the board has none for that university), and how close the user's background is to their work.
+3. Score 0-100 from these factors, in this order of weight:
+   - Formal eligibility: a hard requirement the user does not meet (degree, minimum grade, a mandatory test without a waiver that applies to them) caps the chance at 10.
+   - Competition: published acceptance rates and applicants per funded place. Without numbers, use the ranking and how sought-after the programme is, and say that no numbers are published.
+   - Research fit and supervisors: matching researchers who take PhD students raise it; no clear supervisor lowers it, especially in supervisor-first systems.
+   - Funding: funded places open to the user's citizenship; self-funding only means a lower chance for this user.
+   - The applicant's record: degrees, grades, publications and research experience compared with the stated or typical admitted profile.
+   Bands: 0-19 very low, 20-39 low, 40-64 moderate, 65+ good. Be conservative: funded PhD places are competitive, and above 75 needs a concrete reason (e.g. a professor has already shown interest).
+4. Save each with set_admission_chance: universityId, chance, note (3-5 lines in Azerbaijani: the decisive factors, published numbers with their year, what would raise the chance), source (the official page or statistic the estimate leans on most, if any).
+5. Finish with a short Azerbaijani table sorted by chance (university, chance, band, decisive factor, what would raise it), and say plainly that these are estimates, not predictions.
+Never invent an acceptance rate, a requirement or a URL; when a number is not published, say so and estimate from the other factors.`,
 
   portal_scan: (criteria: string, focus: string) => `Find open PhD positions and programs on the PhD portals that match the user, and save the good ones.
 

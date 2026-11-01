@@ -166,13 +166,37 @@ export const phdTools = [
       langCertNote: z.string().optional().describe('what the official page says and whether it applies to the user'),
       langCertSource: z.string().optional().describe('URL of the official language requirements page'),
       fitNote: z.string().optional().describe('one or two lines: how it meets the directions and conditions'),
+      admitChance: z.number().int().min(0).max(100).optional().describe('estimated admission chance for this applicant, 0-100 (see set_admission_chance)'),
+      admitNote: z.string().optional().describe('decisive factors behind admitChance, in Azerbaijani'),
+      admitSource: z.string().optional().describe('URL of the official page or statistic the estimate leans on most'),
     },
     safe(async ({ name, ...extra }) => {
       if (extra.rankLabel && !extra.rankSource) return fail('rankLabel needs rankSource (ranking page URL)')
       if (extra.langCert && extra.langCert !== 'unknown' && !extra.langCertSource) return fail('langCert needs langCertSource (official requirements page URL)')
-      const u = await resolveUniversity(name, Object.fromEntries(Object.entries(extra).filter(([, v]) => v !== undefined)))
+      if (extra.admitChance !== undefined && !extra.admitNote) return fail('admitChance needs admitNote (the factors behind the estimate)')
+      const admitAt = extra.admitChance !== undefined ? new Date().toISOString() : undefined
+      const u = await resolveUniversity(name, Object.fromEntries(Object.entries({ ...extra, admitAt }).filter(([, v]) => v !== undefined)))
       logActivity('ai', 'universities', `Universitet: ${u.name}${u.rankLabel ? ` (${u.rankLabel})` : ''}`)
       return ok(u)
+    }),
+  ),
+
+  tool(
+    'set_admission_chance',
+    "Save the estimated chance (0-100) that the user is admitted to a PhD at a board university, with the reasons. It is an estimate, not a fact: base it on the official requirements, published acceptance numbers, research fit, funding and the user's record. Bands: 0-19 very low, 20-39 low, 40-64 moderate, 65+ good.",
+    {
+      universityId: z.number().int(),
+      chance: z.number().int().min(0).max(100),
+      note: z.string().describe('3-5 lines in Azerbaijani: the decisive factors, published numbers with their year, what would raise the chance'),
+      source: z.string().optional().describe('URL of the official page or statistic the estimate leans on most (must have appeared in a tool result)'),
+    },
+    safe(async ({ universityId, chance, note, source }) => {
+      if (source && !wasSeen(source)) return fail('source url did not appear in any tool result; read the page first')
+      // '' clears the source of an earlier estimate.
+      const u = update('universities', universityId, { admitChance: chance, admitNote: note, admitSource: source ?? '', admitAt: new Date().toISOString() })
+      if (!u) return fail(`university ${universityId} not found`)
+      logActivity('ai', 'universities', `Qəbul şansı: ${u.name} - ${chance}%`)
+      return ok({ id: u.id, name: u.name, admitChance: chance })
     }),
   ),
 
@@ -916,9 +940,9 @@ export const phdTools = [
   // ---------- background jobs ----------
   tool(
     'start_job',
-    'Start a long research job in the background (it fills the board on its own). kinds: find_universities (universities matching the profile criteria; optional note), gap_analysis (topicId), scout_university (universityId, optional topicIds), verify_deadlines (optional universityId), daily_plan, venue_match (title, abstract), student_voice (universityId, or note = university name: what students say on Reddit), portal_scan (PhD positions on portals for the profile; optional note, universityId), direction_fit (explore and score research direction groups to find the best fit; optional directionId for one, otherwise all).',
+    'Start a long research job in the background (it fills the board on its own). kinds: find_universities (universities matching the profile criteria; optional note), gap_analysis (topicId), scout_university (universityId, optional topicIds), verify_deadlines (optional universityId), daily_plan, venue_match (title, abstract), student_voice (universityId, or note = university name: what students say on Reddit), portal_scan (PhD positions on portals for the profile; optional note, universityId), direction_fit (explore and score research direction groups to find the best fit; optional directionId for one, otherwise all), admission_chance (estimate the admission chance at the board universities; optional universityId for one).',
     {
-      kind: z.enum(['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit']),
+      kind: z.enum(['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit', 'admission_chance']),
       directionId: z.number().int().optional(),
       topicId: z.number().int().optional(),
       topicIds: ids,
@@ -953,6 +977,7 @@ export function toolMeta(name: string, input: Record<string, unknown>): { module
     case 'save_profile': return { module: 'profile', label: 'Profil yeniləndi' }
     case 'add_topic': return { module: 'topics', label: `Mövzu: ${s('title')}` }
     case 'add_university': return { module: 'universities', label: `Universitet: ${s('name')}` }
+    case 'set_admission_chance': return { module: 'universities', label: `Qəbul şansı: U${s('universityId')} - ${s('chance')}%` }
     case 'add_deadline': return { module: 'deadlines', label: `Deadline: ${s('title')} (${s('dueDate')})` }
     case 'add_task': return { module: 'today', label: `Tapşırıq: ${s('title')}` }
     case 'add_group': return { module: 'groups', label: `Qrup: ${s('name')}` }

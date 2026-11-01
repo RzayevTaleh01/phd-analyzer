@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react'
-import { ExternalLink, LoaderCircle, Sparkles, Trash2 } from 'lucide-react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { ExternalLink, Eye, EyeOff, LoaderCircle, Sparkles, Trash2 } from 'lucide-react'
+import { admitBand } from '../../../shared/criteria'
 import type { ModuleKey } from '../../../shared/types'
 import { items, type Coll } from '../api'
 import { az } from '../lib/util'
@@ -146,6 +147,54 @@ export function TagInput({ value, onChange, suggestions = [], placeholder }: { v
 
 export function Spinner() {
   return <LoaderCircle size={14} className="spin" />
+}
+
+/** One line of text while it fits; when it does not, an eye icon that opens the whole text in place. */
+export function Peek({ text, label }: { text?: string; label?: string }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [over, setOver] = useState(false)
+  const [open, setOpen] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || open) return
+    const check = () => setOver(el.scrollWidth > el.clientWidth + 1)
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [text, open])
+  if (!text) return null
+  return (
+    <div className={`peek ${open ? 'open' : over ? 'over' : ''}`}>
+      <span ref={ref} className="peek-text">{text}</span>
+      {(over || open) && (
+        <button className="peek-btn" title={open ? 'Gizlət' : text} onClick={() => setOpen(!open)}>
+          {open ? <EyeOff size={13} /> : <Eye size={13} />}
+          {label && !open && <span>{label}</span>}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Talvis' admission-chance estimate as a scale coloured by band. */
+export function AdmitBar({ chance, compact }: { chance?: number; compact?: boolean }) {
+  if (chance === undefined) return compact ? null : <span className="faint">qiymətləndirilməyib</span>
+  const band = admitBand(chance)
+  const style = { '--dc': `var(--${band.tone})` } as CSSProperties
+  if (compact)
+    return (
+      <span className="admit-mini" style={style} title={`Qəbul şansı (Talvis təxmini): ${chance}% · ${band.label}`}>
+        <span className="admit-track"><i style={{ width: `${chance}%` }} /></span>
+        <b>{chance}%</b>
+      </span>
+    )
+  return (
+    <span className="admit" style={style}>
+      <span className="scorebar"><i style={{ width: `${chance}%` }} /><b>{chance}%</b></span>
+      <span className="admit-band">{band.label}</span>
+    </span>
+  )
 }
 
 export const yearNow = new Date().getFullYear()

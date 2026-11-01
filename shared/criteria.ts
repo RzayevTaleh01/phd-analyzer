@@ -60,3 +60,18 @@ export const LANG_CERT_AZ: Record<string, string> = {
   required: 'Dil sertifikatı tələb olunur',
   unknown: 'Dil tələbi yoxlanılmayıb',
 }
+
+/** Bands for Talvis' 0-100 admission-chance estimate; the job prompt uses the same limits. tone is a chip colour. */
+export const ADMIT_BANDS = [
+  { min: 65, label: 'yaxşı', tone: 'green' },
+  { min: 40, label: 'orta', tone: 'cyan' },
+  { min: 20, label: 'aşağı', tone: 'amber' },
+  { min: 0, label: 'çox aşağı', tone: 'red' },
+] as const
+
+export const admitBand = (chance: number) => ADMIT_BANDS.find((b) => chance >= b.min) ?? ADMIT_BANDS[ADMIT_BANDS.length - 1]
+
+/** Highest admission chance first; universities without an estimate go last, by rank. */
+export function byAdmitChance(a: { admitChance?: number; rank?: number }, b: { admitChance?: number; rank?: number }) {
+  return (b.admitChance ?? -1) - (a.admitChance ?? -1) || (a.rank ?? 99999) - (b.rank ?? 99999)
+}

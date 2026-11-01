@@ -227,7 +227,7 @@ app.post('/api/chat/new', h(() => {
 }))
 
 // ---------- jobs ----------
-const JOB_KINDS: JobKind[] = ['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit']
+const JOB_KINDS: JobKind[] = ['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit', 'admission_chance']
 app.post('/api/jobs', h((req, res) => {
   const { kind, ...params } = req.body as { kind: JobKind }
   if (!JOB_KINDS.includes(kind)) return res.status(400).json({ error: 'unknown job' })

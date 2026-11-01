@@ -5,8 +5,8 @@ import type { Deadline, Doc, Profile, Task, University } from '../../../shared/t
 import { api, items, type InstitutionHit, type Settings } from '../api'
 import { az, dayLabel, daysUntil, fmtDate, todayISO, urgency } from '../lib/util'
 import { useStore } from '../store'
-import { CONDITIONS, COUNTRY_SUGGESTIONS, CONDITION_BY_KEY, DIRECTION_SUGGESTIONS, LANG_CERT_AZ, RANKING_LIMITS, RANKING_SYSTEMS, rankingLabel } from '../../../shared/criteria'
-import { AskTalvis, DeleteBtn, Ext, Field, JobButton, JobLog, Spinner, StatusSelect, TagInput } from './ui'
+import { byAdmitChance, CONDITIONS, COUNTRY_SUGGESTIONS, CONDITION_BY_KEY, DIRECTION_SUGGESTIONS, LANG_CERT_AZ, RANKING_LIMITS, RANKING_SYSTEMS, rankingLabel } from '../../../shared/criteria'
+import { AdmitBar, AskTalvis, DeleteBtn, Ext, Field, JobButton, JobLog, Peek, Spinner, StatusSelect, TagInput } from './ui'
 
 const UNI_STATUS = ['interested', 'researching', 'applying', 'applied', 'interview', 'accepted', 'rejected'] as const
 const DL_KIND = ['application', 'scholarship', 'interview', 'document', 'conference', 'journal', 'other'] as const
@@ -210,7 +210,7 @@ export function UniversitiesPanel() {
       .catch((e) => toast(String(e)))
 
   const prof = state.profile
-  const sorted = [...state.universities].sort((a, b) => (a.rank ?? 99999) - (b.rank ?? 99999))
+  const sorted = [...state.universities].sort(byAdmitChance)
 
   return (
     <>
@@ -230,6 +230,7 @@ export function UniversitiesPanel() {
         <input className="input" style={{ maxWidth: 300 }} value={q} placeholder="Və ya adla axtar (OpenAlex)..." onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
         <button className="btn" onClick={search}>{busy ? <Spinner /> : <Search size={13} />} Axtar</button>
         <span className="grow" />
+        <JobButton kind="admission_chance" module="universities" label="AI: qəbul şansını qiymətləndir" disabled={!state.universities.length} />
         <JobButton kind="verify_deadlines" module="deadlines" label="Deadline-ları yoxla" disabled={!state.universities.length} />
       </div>
       {hits && (
@@ -251,32 +252,37 @@ export function UniversitiesPanel() {
         <div className="muted-box">Hələ universitet yoxdur. "AI: kriteriyalara uyğun universitet tap" profildəki istiqamət, ölkə, reytinq və şərtlərə görə real universitetləri tapıb (reytinq və dil tələbi mənbə linki ilə) bura yazır. Adla da axtarıb əlavə edə bilərsən.</div>
       ) : (
         <table className="table">
-          <thead><tr><th>Universitet</th><th>Reytinq</th><th>Dil sertifikatı</th><th>Status</th><th>Tədqiqatçı</th><th>Deadline</th><th>AI</th><th /></tr></thead>
+          <thead><tr><th>Universitet</th><th title="Talvis-in təxmini: formal tələblər, rəqabət, uyğun professorlar, maliyyə və sənin keçmişin əsasında">Qəbul şansı</th><th>Reytinq</th><th>Dil sertifikatı</th><th>Status</th><th>Tədqiqatçı</th><th>Deadline</th><th>AI</th><th /></tr></thead>
           <tbody>
             {sorted.map((u) => {
               const dls = state.deadlines.filter((d) => d.universityId === u.id && d.status === 'open').sort((a, b) => a.dueDate.localeCompare(b.dueDate))
               const lc = u.langCert ?? 'unknown'
               return (
                 <tr key={u.id}>
-                  <td style={{ maxWidth: 340 }}>
+                  <td style={{ minWidth: 210 }}>
                     <div className="row"><span className="flag">{u.countryCode || '?'}</span><b>{u.name}</b> <Ext href={u.website} /></div>
                     <div className="faint" style={{ fontSize: 11, marginTop: 3 }}>{u.city}{u.openalexId ? ` · ${u.openalexId}` : ' · OpenAlex id yoxdur'}</div>
-                    {u.fitNote && <div className="dim" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.45 }}>{u.fitNote}</div>}
+                    <Peek text={u.fitNote} label="uyğunluq" />
+                  </td>
+                  <td style={{ minWidth: 150 }}>
+                    <AdmitBar chance={u.admitChance} />
+                    <Peek text={u.admitNote} label="niyə" />
+                    {u.admitSource && <div style={{ marginTop: 4 }}><Ext href={u.admitSource}>mənbə</Ext></div>}
                   </td>
                   <td>
                     {u.rankLabel ? <span className="chip cyan">{u.rankLabel}</span> : <span className="faint">-</span>}
                     <div style={{ marginTop: 4 }}><Ext href={u.rankSource}>mənbə</Ext></div>
                   </td>
-                  <td style={{ maxWidth: 200 }}>
+                  <td style={{ minWidth: 150 }}>
                     <span className={`chip ${lc === 'not_required' ? 'green' : lc === 'waiver' ? 'amber' : lc === 'required' ? 'red' : ''}`} title={u.langCertNote}>{LANG_CERT_AZ[lc]}</span>
-                    {u.langCertNote && <div className="faint" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.4 }}>{u.langCertNote}</div>}
+                    <Peek text={u.langCertNote} label="qeyd" />
                     <div style={{ marginTop: 4 }}><Ext href={u.langCertSource}>mənbə</Ext></div>
                   </td>
                   <td><StatusSelect value={u.status} options={UNI_STATUS} onChange={(v) => items.patch<University>('universities', u.id, { status: v })} /></td>
                   <td className="mono">{state.researchers.filter((r) => r.universityId === u.id).length}</td>
                   <td>{dls[0] ? <span className={`chip ${urgency(daysUntil(dls[0].dueDate))}`}>{fmtDate(dls[0].dueDate)}</span> : <span className="faint">-</span>}</td>
                   <td>
-                    <div className="row" style={{ gap: 6 }}>
+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                       <JobButton kind="scout_university" module="researchers" params={{ universityId: u.id }} label="Kəşf et" disabled={!(state.topics.length || prof.directions.length)} />
                       <JobButton kind="verify_deadlines" module="deadlines" params={{ universityId: u.id }} label="Deadline" />
                       <JobButton kind="student_voice" module="insights" params={{ universityId: u.id }} label="Reddit" />

@@ -1,9 +1,10 @@
 import type React from 'react'
 import { Check, FileText, Languages, Library, Mail, Radar, ScrollText, ShieldAlert, ShieldCheck, UserRound, UsersRound } from 'lucide-react'
-import { CONDITION_BY_KEY, rankingLabel } from '../../../shared/criteria'
+import { byAdmitChance, CONDITION_BY_KEY, rankingLabel } from '../../../shared/criteria'
 import { directionCounts, overallScore } from '../../../shared/directions'
 import type { AppState, Doc } from '../../../shared/types'
 import { az, daysUntil, dayLabel, fmtShort, initials, monthShort, todayISO, urgency, weekday } from '../lib/util'
+import { AdmitBar } from '../panels/ui'
 
 type P = { s: AppState }
 
@@ -120,11 +121,11 @@ export function UniversitiesSummary({ s }: P) {
       </div>
       <div className="list">
         {s.universities.length === 0 && <div className="empty">Hədəf universitetləri əlavə et və ya Talvis-ə yaz.</div>}
-        {[...s.universities].sort((a, b) => (a.rank ?? 99999) - (b.rank ?? 99999)).map((u) => (
+        {[...s.universities].sort(byAdmitChance).map((u) => (
           <div key={u.id} className="item">
             <span className="flag">{u.countryCode}</span>
-            <span className="t">{u.name}</span>
-            {u.rank !== undefined && <span className="m" title={u.rankLabel}>#{u.rank}</span>}
+            <span className="t" title={u.rankLabel}>{u.name}</span>
+            {u.admitChance !== undefined ? <AdmitBar chance={u.admitChance} compact /> : u.rank !== undefined && <span className="m" title={u.rankLabel}>#{u.rank}</span>}
             {u.langCert === 'not_required' && <span title="Dil sertifikatı tələb olunmur"><Languages size={11} color="var(--green)" /></span>}
             {u.langCert === 'waiver' && <span title="Dil sertifikatından azadlıq mümkündür"><Languages size={11} color="var(--amber)" /></span>}
             <span className="m row" style={{ gap: 3 }}>{s.researchers.filter((r) => r.universityId === u.id).length}<UsersRound size={10} /></span>
