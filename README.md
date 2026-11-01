@@ -69,7 +69,7 @@ flowchart LR
 **Requirements:** Node.js 20+, a Claude Pro or Max subscription (no API key needed), Windows, macOS or Linux.
 
 ```bash
-git clone https://github.com/<you>/phd-analyzer.git
+git clone https://github.com/rzayevtaleh01/phd-analyzer.git
 cd phd-analyzer
 npm install
 npm start
