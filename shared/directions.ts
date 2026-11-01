@@ -1,16 +1,16 @@
-// Research direction groups (e.g. NLP, Adaptive learning): which board items belong to which group,
+// Research direction groups (e.g. two sub-fields you are comparing): which board items belong to which group,
 // the board filtered to one group, and the criteria used to compare groups.
 import type { AppState, Direction, ID } from './types'
 
 export const CRITERIA = [
-  { key: 'personal_fit', label: 'Şəxsi uyğunluq', hint: 'təcrübən, bacarıqların, təhsilin bu sahəyə nə qədər hazırdır', weight: 0.2 },
-  { key: 'interest', label: 'Maraq', hint: 'sənin öz qiymətin (1-5)', weight: 0.15 },
-  { key: 'opportunities', label: 'PhD imkanları', hint: 'maliyyəli yerlər və proqramlar hədəf ölkələrdə', weight: 0.15 },
-  { key: 'supervisors', label: 'Rəhbərlər', hint: 'hədəf universitetlərdə aktiv, uyğun professorlar', weight: 0.15 },
-  { key: 'momentum', label: 'Sahənin artımı', hint: 'nəşr trendi, maraq artır ya azalır', weight: 0.1 },
-  { key: 'novelty', label: 'Yenilik potensialı', hint: 'açıq boşluqlar, Azərbaycan bucağı', weight: 0.1 },
-  { key: 'feasibility', label: 'İcra edilə bilmə', hint: 'data, resurs, 3-4 ildə bitirmək', weight: 0.1 },
-  { key: 'career', label: 'Karyera', hint: 'akademiya və sənayedə perspektiv', weight: 0.05 },
+  { key: 'personal_fit', label: 'Personal fit', hint: 'how well your experience, skills and education prepare you for this field', weight: 0.2 },
+  { key: 'interest', label: 'Interest', hint: 'your own rating (1-5)', weight: 0.15 },
+  { key: 'opportunities', label: 'PhD opportunities', hint: 'funded positions and programmes in your target countries', weight: 0.15 },
+  { key: 'supervisors', label: 'Supervisors', hint: 'active, well-matched professors at your target universities', weight: 0.15 },
+  { key: 'momentum', label: 'Field momentum', hint: 'publication trend, whether interest is growing or shrinking', weight: 0.1 },
+  { key: 'novelty', label: 'Novelty potential', hint: 'open gaps and fresh angles', weight: 0.1 },
+  { key: 'feasibility', label: 'Feasibility', hint: 'data, resources, finishing in 3-4 years', weight: 0.1 },
+  { key: 'career', label: 'Career', hint: 'prospects in academia and industry', weight: 0.05 },
 ] as const
 
 export type CriterionKey = (typeof CRITERIA)[number]['key']
@@ -42,7 +42,7 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 function scorer(d: Direction): (text: string) => number {
   const kws = d.keywords.map((k) => k.trim().toLowerCase()).filter(Boolean)
   // Short keywords (NLP, HCI, LLM) must match as whole words.
-  const tests = kws.map((k) => (k.length <= 4 ? ((t: string) => new RegExp(`\b${esc(k)}\b`, 'i').test(t)) : (t: string) => t.toLowerCase().includes(k)))
+  const tests = kws.map((k) => (k.length <= 4 ? ((t: string) => new RegExp(`\\b${esc(k)}\\b`, 'i').test(t)) : (t: string) => t.toLowerCase().includes(k)))
   return (text) => tests.filter((t) => t(text)).length
 }
 

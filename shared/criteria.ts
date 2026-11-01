@@ -12,17 +12,17 @@ export interface Condition {
 export const CONDITIONS: Condition[] = [
   {
     key: 'no_language_cert',
-    label: 'Dil sertifikatı (IELTS/TOEFL) tələb etməyən',
-    short: 'IELTS/TOEFL tələbsiz',
+    label: 'No language certificate (IELTS/TOEFL) required',
+    short: 'No IELTS/TOEFL',
     check: 'No English test certificate (IELTS/TOEFL/etc.) is required, or a documented waiver applies to this applicant (check citizenship and language of previous degree against the official admissions/language requirements page).',
   },
-  { key: 'funded', label: 'Təqaüdlü / maaşlı PhD (funded)', short: 'Funded', check: 'PhD positions are funded (salary, stipend or full scholarship), per official pages.' },
-  { key: 'no_tuition', label: 'Təhsil haqqı yoxdur', short: 'Təhsil haqqısız', check: 'No tuition fees for doctoral students from this applicant\'s country.' },
-  { key: 'english_taught', label: 'İngilis dilində proqram', short: 'İngiliscə', check: 'The doctoral programme/research can be done fully in English.' },
-  { key: 'no_gre', label: 'GRE tələb etməyən', short: 'GRE-siz', check: 'GRE is not required.' },
-  { key: 'no_app_fee', label: 'Müraciət haqqı yoxdur', short: 'Müraciət haqqısız', check: 'No application fee, or a fee waiver exists.' },
-  { key: 'no_masters', label: 'Magistr tələb etməyən', short: 'Magistrsiz', check: 'Admission is possible with a bachelor\'s degree (no master\'s required).' },
-  { key: 'rolling', label: 'İl boyu qəbul (rolling)', short: 'Rolling', check: 'Applications are accepted year-round or for open positions at any time.' },
+  { key: 'funded', label: 'Funded PhD (stipend or salary)', short: 'Funded', check: 'PhD positions are funded (salary, stipend or full scholarship), per official pages.' },
+  { key: 'no_tuition', label: 'No tuition fees', short: 'No tuition', check: 'No tuition fees for doctoral students from this applicant\'s country.' },
+  { key: 'english_taught', label: 'Programme taught in English', short: 'English', check: 'The doctoral programme/research can be done fully in English.' },
+  { key: 'no_gre', label: 'No GRE required', short: 'No GRE', check: 'GRE is not required.' },
+  { key: 'no_app_fee', label: 'No application fee', short: 'No app fee', check: 'No application fee, or a fee waiver exists.' },
+  { key: 'no_masters', label: "No master's degree required", short: "No master's", check: 'Admission is possible with a bachelor\'s degree (no master\'s required).' },
+  { key: 'rolling', label: 'Year-round admission (rolling)', short: 'Rolling', check: 'Applications are accepted year-round or for open positions at any time.' },
 ]
 
 export const CONDITION_BY_KEY = Object.fromEntries(CONDITIONS.map((c) => [c.key, c])) as Record<string, Condition>
@@ -50,23 +50,23 @@ export const RANKING_SYSTEMS = ['QS', 'THE', 'ARWU', 'any'] as const
 export const RANKING_LIMITS = [50, 100, 200, 300, 500, 1000, 0] as const
 
 export function rankingLabel(system?: string, max?: number): string {
-  if (!max) return 'Reytinq fərq etmir'
-  return `${system && system !== 'any' ? system : 'Reytinq'} top ${max}`
+  if (!max) return 'Any ranking'
+  return `${system && system !== 'any' ? system : 'Ranking'} top ${max}`
 }
 
-export const LANG_CERT_AZ: Record<string, string> = {
-  not_required: 'Dil sertifikatı tələb olunmur',
-  waiver: 'Waiver mümkündür',
-  required: 'Dil sertifikatı tələb olunur',
-  unknown: 'Dil tələbi yoxlanılmayıb',
+export const LANG_CERT_LABEL: Record<string, string> = {
+  not_required: 'Language test not required',
+  waiver: 'Waiver possible',
+  required: 'Language test required',
+  unknown: 'Language rule not checked',
 }
 
 /** Bands for Talvis' 0-100 admission-chance estimate; the job prompt uses the same limits. tone is a chip colour. */
 export const ADMIT_BANDS = [
-  { min: 65, label: 'yaxşı', tone: 'green' },
-  { min: 40, label: 'orta', tone: 'cyan' },
-  { min: 20, label: 'aşağı', tone: 'amber' },
-  { min: 0, label: 'çox aşağı', tone: 'red' },
+  { min: 65, label: 'good', tone: 'green' },
+  { min: 40, label: 'moderate', tone: 'cyan' },
+  { min: 20, label: 'low', tone: 'amber' },
+  { min: 0, label: 'very low', tone: 'red' },
 ] as const
 
 export const admitBand = (chance: number) => ADMIT_BANDS.find((b) => chance >= b.min) ?? ADMIT_BANDS[ADMIT_BANDS.length - 1]

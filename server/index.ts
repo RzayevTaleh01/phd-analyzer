@@ -63,7 +63,7 @@ app.post('/api/items/:coll', h((req, res) => {
   if (!isColl(c)) return res.status(404).json({ error: 'unknown collection' })
   const extra = c === 'tasks' ? { createdBy: 'user' } : c === 'topics' || c === 'universities' || c === 'gaps' || c === 'insights' || c === 'directions' ? { createdAt: new Date().toISOString() } : {}
   const item = insert(c, { ...extra, ...req.body })
-  logActivity('user', COLL_MODULE[c], `Əlavə: ${(item as { title?: string; name?: string }).title ?? (item as { name?: string }).name ?? c}`)
+  logActivity('user', COLL_MODULE[c], `Added: ${(item as { title?: string; name?: string }).title ?? (item as { name?: string }).name ?? c}`)
   return item
 }))
 app.patch('/api/items/:coll/:id', h((req, res) => {
@@ -110,11 +110,11 @@ app.get('/api/portals/search', h((req) => {
 }))
 app.post('/api/positions', h((req, res) => {
   const b = req.body as { title?: string; url?: string; university?: string; deadline?: string; summary?: string; funding?: string }
-  if (!b.title || !b.url) return res.status(400).json({ error: 'title və url lazımdır' })
+  if (!b.title || !b.url) return res.status(400).json({ error: 'title and url are required' })
   const dup = list('positions').find((x) => x.url === b.url)
   if (dup) return dup
   const pos = insert('positions', { ...b, title: b.title, url: b.url, portal: portalOf(b.url), status: 'found', foundAt: new Date().toISOString() })
-  logActivity('user', 'positions', `PhD elanı: ${pos.title.slice(0, 80)}`)
+  logActivity('user', 'positions', `PhD position:${pos.title.slice(0, 80)}`)
   return pos
 }))
 app.get('/api/reddit/search', h((req) => redditSearch({
@@ -132,7 +132,7 @@ app.get('/api/browser/status', h(() => browserStatus()))
 // TRDesk (task manager)
 app.post('/api/trdesk/sync', h(async () => {
   const rep = await syncBoard()
-  logActivity('user', 'today', `TRDesk sinxron: +${rep.added.length}, tamamlanan ${rep.doneFromTrdesk.length + rep.doneToTrdesk.length}`)
+  logActivity('user', 'today', `TRDesk sync: +${rep.added.length}, completed ${rep.doneFromTrdesk.length + rep.doneToTrdesk.length}`)
   return rep
 }))
 app.get('/api/trdesk/upcoming', h(async () => {
@@ -145,7 +145,7 @@ app.put('/api/trdesk/tasks/:id/done', h(async (req) => trdesk.setDone(planRef(),
 app.post('/api/research/save-paper', h((req) => {
   const { hit, topicIds, researcherIds, status } = req.body as { hit: WorkHit; topicIds?: number[]; researcherIds?: number[]; status?: 'to_read' }
   const out = savePaper(hit, { topicIds, researcherIds, status })
-  if (out.created) logActivity('user', 'papers', `Məqalə: ${out.paper.title.slice(0, 80)}`)
+  if (out.created) logActivity('user', 'papers', `Paper: ${out.paper.title.slice(0, 80)}`)
   return out
 }))
 app.post('/api/research/save-researcher', h(async (req, res) => {
@@ -153,7 +153,7 @@ app.post('/api/research/save-researcher', h(async (req, res) => {
   const [a] = await oa.getAuthors([openalexId])
   if (!a) return res.status(404).json({ error: 'author not found' })
   const out = saveResearcher(a, extra)
-  if (out.created) logActivity('user', 'researchers', `Tədqiqatçı: ${out.researcher.name}`)
+  if (out.created) logActivity('user', 'researchers', `Researcher: ${out.researcher.name}`)
   return out
 }))
 app.post('/api/research/save-venue', h(async (req) => {
@@ -164,7 +164,7 @@ app.post('/api/research/save-venue', h(async (req) => {
 app.post('/api/universities/resolve', h(async (req) => {
   const { name, ...extra } = req.body as { name: string }
   const u = await resolveUniversity(name, extra)
-  logActivity('user', 'universities', `Universitet: ${u.name}`)
+  logActivity('user', 'universities', `University: ${u.name}`)
   return u
 }))
 
@@ -191,7 +191,7 @@ app.patch('/api/accounts/:id', h((req) => {
   renameAccount(String(req.params.id), String(req.body?.label ?? ''))
   return accountsView()
 }))
-app.delete('/api/accounts/:id', h((req, res) => (removeAccount(String(req.params.id)) ? accountsView() : res.status(400).json({ error: 'Bu hesab silinə bilməz' }))))
+app.delete('/api/accounts/:id', h((req, res) => (removeAccount(String(req.params.id)) ? accountsView() : res.status(400).json({ error: 'This account cannot be removed' }))))
 app.put('/api/accounts/auto-switch', h((req) => {
   setSettings({ autoSwitch: Boolean(req.body?.on) })
   publishAccounts()
@@ -210,7 +210,7 @@ app.get('/api/chat', h(() => {
 app.post('/api/chat', h((req, res) => {
   const text = String(req.body?.text ?? '').trim()
   if (!text) return res.status(400).json({ error: 'empty' })
-  if (chatBusy()) return res.status(409).json({ error: 'Talvis hələ əvvəlki suala cavab verir' })
+  if (chatBusy()) return res.status(409).json({ error: 'Talvis is still answering the previous message' })
   const dir = Number(req.body?.directionId) || undefined
   void sendChat(text, dir).catch((e) => console.error('chat failed', e))
   return res.status(202).json({ ok: true })
@@ -227,7 +227,7 @@ app.post('/api/chat/new', h(() => {
 }))
 
 // ---------- jobs ----------
-const JOB_KINDS: JobKind[] = ['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit', 'admission_chance']
+const JOB_KINDS: JobKind[] = ['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit', 'admission_chance', 'setup_directions']
 app.post('/api/jobs', h((req, res) => {
   const { kind, ...params } = req.body as { kind: JobKind }
   if (!JOB_KINDS.includes(kind)) return res.status(400).json({ error: 'unknown job' })
@@ -253,7 +253,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // Local only: the server can run research agents and open a login terminal.
 // Local only by default (the server runs agents with your Claude login); HOST=0.0.0.0 in the container, behind APP_PASSWORD.
 const HOST = process.env.HOST || '127.0.0.1'
-if (HOST !== '127.0.0.1' && HOST !== 'localhost' && !authRequired()) console.warn('DİQQƏT: server açıq ünvanda işləyir, amma APP_PASSWORD yoxdur')
+if (HOST !== '127.0.0.1' && HOST !== 'localhost' && !authRequired()) console.warn('WARNING: the server is listening on a public address but APP_PASSWORD is not set')
 app.listen(PORT, HOST, () => {
   console.log(`PhD Analyzer (Talvis): http://localhost:${PORT}`)
   void checkAll().then(() => {

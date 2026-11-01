@@ -6,20 +6,20 @@
 import { closePg, pushAll, pushLoginFiles } from '../server/pgsync'
 
 if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL lazımdır')
+  console.error('DATABASE_URL is required')
   process.exit(1)
 }
 try {
   if (!process.argv.includes('--logins-only')) {
     await pushAll({ force: process.argv.includes('--force') })
-    console.log('Hazırdır: lokal data Postgres-ə köçürüldü.')
+    console.log('Done: local data copied to Postgres.')
   }
   if (process.argv.includes('--logins') || process.argv.includes('--logins-only')) {
     const files = await pushLoginFiles()
-    console.log(`Claude girişləri köçürüldü: ${files.join(', ') || 'heç biri tapılmadı'}`)
+    console.log(`Claude logins copied: ${files.join(', ') || 'none found'}`)
   }
 } catch (e) {
-  console.error(`Xəta: ${(e as Error).message}`)
+  console.error(`Error: ${(e as Error).message}`)
   process.exitCode = 1
 } finally {
   await closePg()

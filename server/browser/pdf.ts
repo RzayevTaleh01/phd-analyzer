@@ -36,11 +36,11 @@ function pdfLinkIn(html: string, base: string): string | undefined {
 
 async function download(url: string, hops = 0): Promise<{ url: string; data: Uint8Array }> {
   const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/pdf,text/html;q=0.8,*/*;q=0.5' }, redirect: 'follow', signal: AbortSignal.timeout(60_000) })
-  if (!res.ok) throw new PdfError(`${new URL(url).host}: HTTP ${res.status}${res.status === 403 ? ' (sayt yükləməni bloklayır)' : ''}`)
+  if (!res.ok) throw new PdfError(`${new URL(url).host}: HTTP ${res.status}${res.status === 403 ? ' (the site blocks downloads)' : ''}`)
   const len = Number(res.headers.get('content-length') ?? 0)
-  if (len > MAX_BYTES) throw new PdfError(`PDF çox böyükdür (${Math.round(len / 1e6)} MB, limit 40 MB)`)
+  if (len > MAX_BYTES) throw new PdfError(`PDF is too large (${Math.round(len / 1e6)} MB, limit 40 MB)`)
   const data = new Uint8Array(await res.arrayBuffer())
-  if (data.length > MAX_BYTES) throw new PdfError('PDF çox böyükdür (limit 40 MB)')
+  if (data.length > MAX_BYTES) throw new PdfError('PDF is too large (limit 40 MB)')
   if (isPdf(data)) return { url: res.url || url, data }
   // Not a PDF: a landing page. Follow its PDF link once or twice.
   const type = res.headers.get('content-type') ?? ''
@@ -48,7 +48,7 @@ async function download(url: string, hops = 0): Promise<{ url: string; data: Uin
     const next = pdfLinkIn(new TextDecoder().decode(data), res.url || url)
     if (next && next !== url) return download(next, hops + 1)
   }
-  throw new PdfError(`${new URL(url).host}: bu link PDF deyil (${type || 'naməlum tip'}) və səhifədə PDF linki tapılmadı`)
+  throw new PdfError(`${new URL(url).host}: this link is not a PDF (${type || 'unknown type'}) and no PDF link was found on the page`)
 }
 
 export async function readPdf(url: string): Promise<PdfDoc> {
@@ -78,7 +78,7 @@ export async function readPdf(url: string): Promise<PdfDoc> {
 /** Open-access PDF candidates for a library paper: its own pdfUrl, arXiv, then every OpenAlex location. */
 export async function paperPdfCandidates(paperId: number): Promise<{ title: string; urls: string[] }> {
   const p = get('papers', paperId)
-  if (!p) throw new PdfError(`P${paperId} kitabxanada yoxdur`)
+  if (!p) throw new PdfError(`P${paperId} is not in the library`)
   const urls: string[] = []
   if (p.pdfUrl) urls.push(p.pdfUrl)
   if (p.arxivId) urls.push(`https://arxiv.org/pdf/${p.arxivId}`)

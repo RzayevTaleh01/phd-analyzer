@@ -115,6 +115,7 @@ export interface Settings {
   trdeskUrl: string
   trdeskKey: string
   trdeskPlan: string
+  language: string
 }
 
 export interface PortalInfo {

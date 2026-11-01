@@ -37,7 +37,7 @@ export function PositionsPanel() {
   const savedUrls = new Set(state.positions.map((p) => p.url))
   const save = (l: PortalResult['listings'][number]) =>
     api('/positions', { body: { title: l.title, url: l.url, university: l.university, summary: l.snippet, funding: l.funding } })
-      .then(() => toast('Elan yadda saxlandı'))
+      .then(() => toast('Position saved'))
       .catch((e) => toast(String(e)))
   const toggle = (k: string) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]))
 
@@ -50,11 +50,11 @@ export function PositionsPanel() {
     <>
       <JobLog module="positions" />
       <div className="toolbar">
-        <JobButton kind="portal_scan" module="positions" label="AI: bütün portallarda profilimə uyğun elan tap" disabled={!(prof.directions.length || state.topics.length)} />
-        <span className="faint" style={{ fontSize: 12 }}>Talvis portalları gəzir, elanları açıb oxuyur, maliyyə və deadline-ı elandan yazır.</span>
+        <JobButton kind="portal_scan" module="positions" label="AI: find positions matching my profile across all portals" disabled={!(prof.directions.length || state.topics.length)} />
+        <span className="faint" style={{ fontSize: 12 }}>Talvis browses the portals, opens and reads each listing, and records funding and deadline from it.</span>
       </div>
 
-      <div className="section-label">Portallarda axtar</div>
+      <div className="section-label">Search portals</div>
       <div className="row" style={{ gap: 4, flexWrap: 'wrap', margin: '8px 0' }}>
         {portals.map((p) => (
           <button key={p.key} className={`qchip ${picked.includes(p.key) ? 'on' : ''}`} title={p.note} onClick={() => toggle(p.key)}>
@@ -63,12 +63,12 @@ export function PositionsPanel() {
         ))}
       </div>
       <div className="toolbar">
-        <input className="input" style={{ maxWidth: 320 }} value={q} placeholder="Sahə (ingiliscə), məs. natural language processing" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
-        <input className="input" style={{ maxWidth: 160 }} value={country} placeholder="Ölkə (istəyə görə)" onChange={(e) => setCountry(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
-        <button className="btn" disabled={busy || !picked.length} onClick={search}>{busy ? <Spinner /> : <Search size={13} />} Axtar</button>
+        <input className="input" style={{ maxWidth: 320 }} value={q} placeholder="Field (in English), e.g. natural language processing" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
+        <input className="input" style={{ maxWidth: 160 }} value={country} placeholder="Country (optional)" onChange={(e) => setCountry(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
+        <button className="btn" disabled={busy || !picked.length} onClick={search}>{busy ? <Spinner /> : <Search size={13} />} Search</button>
       </div>
       <p className="faint" style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: -6 }}>
-        ↗ işarəli portallar (PhDPortal, FindAPhD, EURAXESS...) avtomatik axtarışı bağlayır: onları öz brauzerində açmaq üçün link verilir, Talvis isə onları veb axtarışla tapır.
+        Portals marked ↗ (PhDPortal, FindAPhD, EURAXESS...) block automated search: you get a link to open them in your own browser, while Talvis finds them through web search.
       </p>
 
       {res && (
@@ -77,10 +77,10 @@ export function PositionsPanel() {
             <div key={r.portal} className="hit">
               <div className="row" style={{ gap: 8 }}>
                 <b style={{ fontSize: 13 }}>{r.name}</b>
-                {r.mode === 'direct' ? <span className="chip cyan">{r.listings.length} nəticə</span> : <span className="chip">brauzerdə aç</span>}
+                {r.mode === 'direct' ? <span className="chip cyan">{r.listings.length} results</span> : <span className="chip">open in browser</span>}
                 {r.error && <span className="chip amber" title={r.error}>{r.error.slice(0, 50)}</span>}
                 <span className="grow" />
-                <Ext href={r.searchUrl}><span className="row" style={{ gap: 4 }}>Portalda aç <ExternalLink size={11} /></span></Ext>
+                <Ext href={r.searchUrl}><span className="row" style={{ gap: 4 }}>Open on portal <ExternalLink size={11} /></span></Ext>
               </div>
               {r.listings.map((l) => (
                 <div key={l.url} className="row" style={{ gap: 8, marginTop: 8, alignItems: 'flex-start' }}>
@@ -93,7 +93,7 @@ export function PositionsPanel() {
                     </div>
                     {l.snippet && <div className="faint" style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>{l.snippet.slice(0, 220)}</div>}
                   </div>
-                  <button className="btn sm" disabled={savedUrls.has(l.url)} onClick={() => save(l)}><BookmarkPlus size={12} /> {savedUrls.has(l.url) ? 'Saxlanıb' : 'Saxla'}</button>
+                  <button className="btn sm" disabled={savedUrls.has(l.url)} onClick={() => save(l)}><BookmarkPlus size={12} /> {savedUrls.has(l.url) ? 'Saved' : 'Save'}</button>
                 </div>
               ))}
             </div>
@@ -102,16 +102,16 @@ export function PositionsPanel() {
       )}
 
       <div className="row" style={{ margin: '6px 0 10px' }}>
-        <div className="section-label grow">Saxlanmış elanlar ({shown.length})</div>
+        <div className="section-label grow">Saved positions ({shown.length})</div>
         <label className="faint row" style={{ gap: 5, fontSize: 11.5, marginLeft: 10 }}>
-          <input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} /> atılanlar da
+          <input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} /> show dismissed
         </label>
       </div>
       {shown.length === 0 ? (
-        <div className="muted-box">Hələ elan yoxdur. Yuxarıda axtar və ya "AI: bütün portallarda..." düyməsini bas: Talvis profildəki istiqamət və ölkələrə görə real elanları tapıb bura yazır.</div>
+        <div className="muted-box">No positions yet. Search above or press the "AI: find positions..." button: Talvis finds real positions based on the directions and countries in your profile and writes them here.</div>
       ) : (
         <table className="table">
-          <thead><tr><th>Elan</th><th>Universitet</th><th>Maliyyə</th><th>Deadline</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>Position</th><th>University</th><th>Funding</th><th>Deadline</th><th>Status</th><th /></tr></thead>
           <tbody>
             {shown.map((p) => (
               <tr key={p.id}>
@@ -132,7 +132,7 @@ export function PositionsPanel() {
                 <td><StatusSelect value={p.status} options={POS_STATUS} onChange={(v) => items.patch<Position>('positions', p.id, { status: v })} /></td>
                 <td>
                   <div className="row" style={{ gap: 4 }}>
-                    <AskTalvis label="Uyğunluq" text={`[J${p.id}] elanını aç, tələbləri və maliyyəni oxu, mənim profilimə nə qədər uyğun olduğunu və nə hazırlamalı olduğumu yaz.`} />
+                    <AskTalvis label="Fit" text={`[J${p.id}] Open this position, read the requirements and funding, and tell me how well it fits my profile and what I need to prepare.`} />
                     <DeleteBtn coll="positions" id={p.id} />
                   </div>
                 </td>
@@ -150,7 +150,7 @@ export function PositionsPanel() {
 const TONE_CHIP = { positive: 'green', negative: 'red', mixed: 'amber' } as const
 
 function sentimentLabel(n: number) {
-  return n >= 2 ? 'çox müsbət' : n === 1 ? 'müsbət' : n === 0 ? 'qarışıq' : n === -1 ? 'mənfi' : 'çox mənfi'
+  return n >= 2 ? 'very positive' : n === 1 ? 'positive' : n === 0 ? 'mixed' : n === -1 ? 'negative' : 'very negative'
 }
 
 function InsightCard({ i }: { i: Insight }) {
@@ -164,9 +164,9 @@ function InsightCard({ i }: { i: Insight }) {
         <b style={{ fontSize: 13.5 }}>{uni?.name ?? i.subject}</b>
         <span className={`chip ${i.sentiment > 0 ? 'green' : i.sentiment < 0 ? 'red' : 'amber'}`}>{sentimentLabel(i.sentiment)} ({i.sentiment > 0 ? '+' : ''}{i.sentiment})</span>
         <span className="chip">{i.source}</span>
-        <span className="faint mono" style={{ fontSize: 11 }}>{i.postsAnalyzed} post/şərh · {i.createdAt.slice(0, 10)}</span>
+        <span className="faint mono" style={{ fontSize: 11 }}>{i.postsAnalyzed} posts/comments · {i.createdAt.slice(0, 10)}</span>
         <span className="grow" />
-        <AskTalvis label="Sual ver" text={`[I${i.id}] ${i.subject} haqqında tələbə rəylərinə əsasən: `} />
+        <AskTalvis label="Ask" text={`[I${i.id}] Based on student opinions about ${i.subject}: `} />
         <DeleteBtn coll="insights" id={i.id} />
       </div>
       <p className="dim" style={{ fontSize: 12.5, lineHeight: 1.55, margin: '8px 0' }}>{i.summary}</p>
@@ -175,22 +175,22 @@ function InsightCard({ i }: { i: Insight }) {
       </div>
       {open && (
         <>
-          <div className="section-label" style={{ margin: '12px 0 6px' }}>Mövzular</div>
+          <div className="section-label" style={{ margin: '12px 0 6px' }}>Themes</div>
           {i.themes.map((t) => (
             <div key={t.theme} style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 4 }}>
               <span className={`chip ${TONE_CHIP[t.tone]}`}>{t.theme}</span> {t.note}
             </div>
           ))}
-          <div className="section-label" style={{ margin: '12px 0 6px' }}>Sübutlar ({i.evidence.length})</div>
+          <div className="section-label" style={{ margin: '12px 0 6px' }}>Evidence ({i.evidence.length})</div>
           {i.evidence.map((e) => (
             <div key={e.url} style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 6 }}>
               <span className="dim">"{e.quote}"</span>{' '}
               <a href={e.url} target="_blank" rel="noreferrer" className="faint" style={{ fontSize: 11 }}>
-                {e.subreddit ? `r/${e.subreddit}` : 'mənbə'}{e.date ? ` · ${e.date}` : ''}{e.score !== undefined ? ` · ${e.score}↑` : ''}
+                {e.subreddit ? `r/${e.subreddit}` : 'source'}{e.date ? ` · ${e.date}` : ''}{e.score !== undefined ? ` · ${e.score}↑` : ''}
               </a>
             </div>
           ))}
-          {i.caveats && <div className="muted-box" style={{ marginTop: 8, fontSize: 11.5 }}>Məhdudiyyətlər: {i.caveats}</div>}
+          {i.caveats && <div className="muted-box" style={{ marginTop: 8, fontSize: 11.5 }}>Caveats: {i.caveats}</div>}
         </>
       )}
     </div>
@@ -223,32 +223,32 @@ export function InsightsPanel() {
       <JobLog module="insights" />
       <div className="toolbar">
         <select className="select" style={{ width: 'auto', maxWidth: 320 }} value={uniId} onChange={(e) => setUniId(e.target.value ? Number(e.target.value) : '')}>
-          {state.universities.length === 0 && <option value="">Əvvəl universitet əlavə et</option>}
+          {state.universities.length === 0 && <option value="">Add a university first</option>}
           {state.universities.map((u) => <option key={u.id} value={u.id}>{u.name}{withInsight.has(u.id) ? ' ✓' : ''}</option>)}
         </select>
-        <JobButton kind="student_voice" module="insights" params={{ universityId: uniId }} label="AI: Reddit-də tələbələr nə deyir?" disabled={!uniId} />
+        <JobButton kind="student_voice" module="insights" params={{ universityId: uniId }} label="AI: what do students say on Reddit?" disabled={!uniId} />
       </div>
       <p className="faint" style={{ fontSize: 11.5, lineHeight: 1.5, marginTop: -6 }}>
-        Talvis universitetin öz subreddit-ində və r/PhD, r/gradadmissions, r/AskAcademia-da axtarır, mövzuları oxuyur və rəhbərlik, maaş/təqaüd, iş yükü, beynəlxalq tələbə təcrübəsi üzrə nəticəni sübut linkləri ilə yazır.
+        Talvis searches the university's own subreddit and r/PhD, r/gradadmissions, r/AskAcademia, reads the threads, and writes up findings on supervision, pay/stipend, workload and the international student experience, with evidence links.
       </p>
 
-      <div className="section-label">Analizlər ({state.insights.length})</div>
+      <div className="section-label">Analyses ({state.insights.length})</div>
       <div className="hits" style={{ margin: '10px 0 18px' }}>
-        {state.insights.length === 0 && <div className="muted-box">Hələ analiz yoxdur. Universitet seç və "AI: Reddit-də tələbələr nə deyir?" düyməsini bas.</div>}
+        {state.insights.length === 0 && <div className="muted-box">No analyses yet. Pick a university and press "AI: what do students say on Reddit?".</div>}
         {[...state.insights].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((i) => <InsightCard key={i.id} i={i} />)}
       </div>
 
-      <div className="section-label">Reddit-də özün axtar</div>
+      <div className="section-label">Search Reddit yourself</div>
       <div className="toolbar" style={{ marginTop: 8 }}>
-        <input className="input" style={{ maxWidth: 320 }} value={q} placeholder={'məs. "University of Tartu" PhD'} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
-        <input className="input" style={{ maxWidth: 160 }} value={sub} placeholder="subreddit (istəyə görə)" onChange={(e) => setSub(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
-        <button className="btn" disabled={busy} onClick={search}>{busy ? <Spinner /> : <Search size={13} />} Axtar</button>
+        <input className="input" style={{ maxWidth: 320 }} value={q} placeholder={'e.g. "University of Tartu" PhD'} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
+        <input className="input" style={{ maxWidth: 160 }} value={sub} placeholder="subreddit (optional)" onChange={(e) => setSub(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
+        <button className="btn" disabled={busy} onClick={search}>{busy ? <Spinner /> : <Search size={13} />} Search</button>
         {['PhD', 'gradadmissions', 'AskAcademia'].map((s) => <button key={s} className={`qchip ${sub === s ? 'on' : ''}`} onClick={() => setSub(sub === s ? '' : s)}>r/{s}</button>)}
       </div>
       {posts && (
         <div className="hits">
-          <div className="faint" style={{ fontSize: 11 }}>{posts.length} post · {via === 'rss' ? 'açıq RSS (xal yoxdur; Ayarlarda Reddit açarı ilə daha çox məlumat)' : 'Reddit API'}</div>
-          {posts.length === 0 && <div className="empty">Tapılmadı.</div>}
+          <div className="faint" style={{ fontSize: 11 }}>{posts.length} posts · {via === 'rss' ? 'open RSS (no scores; add a Reddit key in Settings for more data)' : 'Reddit API'}</div>
+          {posts.length === 0 && <div className="empty">Nothing found.</div>}
           {posts.map((p) => (
               <div key={p.id} className="hit">
                 <a href={p.url} target="_blank" rel="noreferrer" className="hit-title" style={{ fontSize: 12.5 }}>{p.title}</a>

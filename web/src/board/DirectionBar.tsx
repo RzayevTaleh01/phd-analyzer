@@ -22,8 +22,8 @@ export default function DirectionBar() {
   if (!dirs.length) return null
   return (
     <div className="dirbar">
-      <span className="dirbar-label"><Layers size={11} /> İstiqamət</span>
-      <button className={`dir-chip ${direction === null ? 'on' : ''}`} onClick={() => setDirection(null)}>Hamısı</button>
+      <span className="dirbar-label"><Layers size={11} /> Direction</span>
+      <button className={`dir-chip ${direction === null ? 'on' : ''}`} onClick={() => setDirection(null)}>All</button>
       {dirs.map((d) => {
         const score = overallScore(d.analysis?.scores, d.interest)
         return (
@@ -31,7 +31,7 @@ export default function DirectionBar() {
             key={d.id}
             className={`dir-chip ${direction === d.id ? 'on' : ''} ${d.status === 'dropped' ? 'dropped' : ''}`}
             style={{ '--dc': d.color } as CSSProperties}
-            title={`${d.description}\n${counts[d.id]} element${score !== undefined ? ` · uyğunluq ${score}/10` : ''}`}
+            title={`${d.description}\n${counts[d.id]} items${score !== undefined ? ` · fit ${score}/10` : ''}`}
             onClick={() => setDirection(direction === d.id ? null : d.id)}
           >
             <i />
@@ -42,7 +42,7 @@ export default function DirectionBar() {
         )
       })}
       <span className="grow" />
-      <button className="dir-chip ghost" onClick={() => setExpanded('directions')}><Compass size={11} /> Müqayisə</button>
+      <button className="dir-chip ghost" onClick={() => setExpanded('directions')}><Compass size={11} /> Compare</button>
     </div>
   )
 }

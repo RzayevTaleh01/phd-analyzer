@@ -49,7 +49,7 @@ export default function ModulePanel() {
             <div className="panel-desc">{def.desc}</div>
           </div>
           <div className="panel-actions">
-            <button className="icon-btn" onClick={() => setExpanded(null)} title="Bağla (Esc)"><X size={15} /></button>
+            <button className="icon-btn" onClick={() => setExpanded(null)} title="Close (Esc)"><X size={15} /></button>
           </div>
         </div>
         <div className="panel-body">

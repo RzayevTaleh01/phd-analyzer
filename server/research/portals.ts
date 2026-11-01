@@ -43,9 +43,9 @@ const enc = encodeURIComponent
 
 /** Listings from a rendered search page: links whose URL looks like a detail page, with the text around them. */
 async function listingsFromPage(portal: string, url: string, detail: RegExp, limit: number, mode: 'auto' | 'browser' = 'auto'): Promise<PortalListing[]> {
-  if (!(await robotsAllowed(url))) throw new Error('robots.txt bu axtarış səhifəsinə icazə vermir')
+  if (!(await robotsAllowed(url))) throw new Error('robots.txt does not allow this search page')
   const page = await readPage(url, { mode, scroll: true })
-  if (page.blocked) throw new Error(`sayt bloklayır: ${page.blocked}`)
+  if (page.blocked) throw new Error(`the site blocks access: ${page.blocked}`)
   const seen = new Set<string>()
   const found: { title: string; url: string; at: number }[] = []
   for (const l of page.links) {
@@ -70,7 +70,7 @@ interface DaadCourse { id: number; courseName: string; academy: string; city: st
 
 export const PORTALS: Record<string, PortalDef> = {
   daad: {
-    name: 'DAAD (Almaniya)',
+    name: 'DAAD (Germany)',
     domain: 'daad.de',
     searchUrl: (q) => `https://www2.daad.de/deutschland/studienangebote/international-programmes/en/result/?q=${enc(q)}&degree%5B%5D=3&degree%5B%5D=4`,
     direct: async (q, limit) => {
@@ -85,11 +85,11 @@ export const PORTALS: Record<string, PortalDef> = {
         university: c.academy,
         city: c.city,
         deadline: c.applicationDeadline ? htmlToPage(c.applicationDeadline, 'https://www2.daad.de').text.replace(/\s+/g, ' ') : undefined,
-        funding: [c.financialSupport ? 'maliyyə dəstəyi var' : '', c.tuitionFees ?? ''].filter(Boolean).join('; ') || undefined,
+        funding: [c.financialSupport ? 'funding available' : '', c.tuitionFees ?? ''].filter(Boolean).join('; ') || undefined,
         snippet: [c.courseType === 4 ? 'Research school' : 'PhD programme', c.languages?.join('/'), c.beginning, c.programmeDuration].filter(Boolean).join(' · '),
       }))
     },
-    note: 'Almaniyada beynəlxalq PhD proqramları və research school-lar (rəsmi DAAD bazası)',
+    note: 'International PhD programmes and research schools in Germany (official DAAD database)',
   },
   jobsacuk: {
     name: 'jobs.ac.uk',
@@ -103,44 +103,44 @@ export const PORTALS: Record<string, PortalDef> = {
       const more = await listingsFromPage('jobsacuk', `https://www.jobs.ac.uk/search/?keywords=${enc(`${q} phd`)}`, detail, limit)
       return [...phds, ...more.filter((m) => !phds.some((x) => x.url === m.url))].slice(0, limit)
     },
-    note: 'Böyük Britaniya: PhD studentship-lər',
+    note: 'United Kingdom: PhD studentships',
   },
   academicpositions: {
     name: 'AcademicPositions',
     domain: 'academicpositions.com',
     searchUrl: (q) => `https://academicpositions.com/jobs/position/phd?search=${enc(q)}`,
     direct: (q, limit) => listingsFromPage('academicpositions', `https://academicpositions.com/jobs/position/phd?search=${enc(q)}`, /academicpositions\.com\/ad\//, limit, 'browser'),
-    note: 'Avropa: maaşlı PhD vəzifələri (Skandinaviya, Niderland, Belçika, İsveçrə)',
+    note: 'Europe: paid PhD positions (Scandinavia, Netherlands, Belgium, Switzerland)',
   },
   euraxess: {
     name: 'EURAXESS',
     domain: 'euraxess.ec.europa.eu',
     searchUrl: (q) => `https://euraxess.ec.europa.eu/jobs/search?keywords=${enc(q)}`,
-    note: 'Aİ-nin rəsmi tədqiqat vəzifələri portalı (R1 = PhD namizədi); robots.txt avtomatik axtarışı bağlayır',
+    note: 'Official EU portal for research positions (R1 = PhD candidate); robots.txt blocks automated search',
   },
   phdportal: {
     name: 'PhDPortal',
     domain: 'phdportal.com',
     searchUrl: (q) => `https://www.phdportal.com/search/phd/?kw-what=${enc(q)}`,
-    note: 'Studyportals: dünya üzrə PhD proqramları; robots.txt avtomatik axtarışı bağlayır',
+    note: 'Studyportals: PhD programmes worldwide; robots.txt blocks automated search',
   },
   findaphd: {
     name: 'FindAPhD',
     domain: 'findaphd.com',
     searchUrl: (q) => `https://www.findaphd.com/phds/?Keywords=${enc(q)}`,
-    note: 'Ən böyük PhD elan bazası (UK, Avropa); Cloudflare yoxlaması var',
+    note: 'The largest PhD listing database (UK, Europe); has a Cloudflare check',
   },
   scholarshipportal: {
     name: 'ScholarshipPortal',
     domain: 'scholarshipportal.com',
     searchUrl: (q) => `https://www.scholarshipportal.com/scholarships?q=${enc(q)}`,
-    note: 'Təqaüdlər (Studyportals)',
+    note: 'Scholarships (Studyportals)',
   },
   nature: {
     name: 'Nature Careers',
     domain: 'nature.com/naturecareers',
     searchUrl: (q) => `https://www.nature.com/naturecareers/jobs/phd?keywords=${enc(q)}`,
-    note: 'Elm sahəsində PhD vəzifələri',
+    note: 'PhD positions in science',
   },
 }
 

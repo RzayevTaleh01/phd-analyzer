@@ -59,7 +59,7 @@ async function launch(): Promise<BrowserContext> {
     }
   }
   if (!browser)
-    throw new BrowserMissingError(`Brauzer tapılmadı. Edge və ya Chrome quraşdır, ya da "npm run browser:install" işlət. (${errors.join(' | ')})`)
+    throw new BrowserMissingError(`No browser found. Install Edge or Chrome, or run "npm run browser:install". (${errors.join(' | ')})`)
   browser.on('disconnected', () => {
     browser = null
     context = null
@@ -106,10 +106,10 @@ async function slot<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 const BLOCK_PATTERNS: [RegExp, string][] = [
-  [/just a moment|checking your browser|verify you are human|cf-chl|attention required|are you a robot|captcha/i, 'bot qoruması (Cloudflare/CAPTCHA)'],
-  [/access denied|request blocked|forbidden/i, 'giriş qadağandır (403)'],
-  [/enable javascript and cookies/i, 'bot qoruması'],
-  [/log ?in to continue|sign in to continue|please log in/i, 'giriş (login) tələb olunur'],
+  [/just a moment|checking your browser|verify you are human|cf-chl|attention required|are you a robot|captcha/i, 'bot protection (Cloudflare/CAPTCHA)'],
+  [/access denied|request blocked|forbidden/i, 'access denied (403)'],
+  [/enable javascript and cookies/i, 'bot protection'],
+  [/log ?in to continue|sign in to continue|please log in/i, 'login required'],
 ]
 
 export function detectBlock(title: string, text: string, status?: number): string | undefined {

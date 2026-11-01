@@ -30,7 +30,7 @@ function emit(data: unknown, text: string) {
   const file = opt('out')
   if (file) {
     fs.writeFileSync(file, out)
-    console.log(`yazıldı: ${file}`)
+    console.log(`written: ${file}`)
   } else console.log(out)
 }
 
@@ -51,8 +51,8 @@ async function main() {
         const words = find.toLowerCase().split(/\s+/)
         text = text.split(/\n+/).filter((x) => words.some((w) => x.toLowerCase().includes(w))).join('\n')
       }
-      const head = [`# ${p.title}`, `${p.finalUrl}  (${p.via}${p.status ? `, HTTP ${p.status}` : ''})`, p.blocked ? `!! Bloklandı: ${p.blocked}` : ''].filter(Boolean).join('\n')
-      const links = flag('links') ? `\n\n## Linklər (${p.links.length})\n${p.links.map((l) => `- ${l.text} -> ${l.href}`).join('\n')}` : ''
+      const head = [`# ${p.title}`, `${p.finalUrl}  (${p.via}${p.status ? `, HTTP ${p.status}` : ''})`, p.blocked ? `!! Blocked: ${p.blocked}` : ''].filter(Boolean).join('\n')
+      const links = flag('links') ? `\n\n## Links (${p.links.length})\n${p.links.map((l) => `- ${l.text} -> ${l.href}`).join('\n')}` : ''
       const ld = usefulJsonLd(p.jsonld)
       emit({ ...p, jsonld: ld }, `${head}\n\n${text}${links}${ld.length ? `\n\n## JSON-LD\n${JSON.stringify(ld, null, 1).slice(0, 4000)}` : ''}`)
       break
@@ -63,27 +63,27 @@ async function main() {
       const idx = pageIndexes(opt('pages'), d.pages)
       const find = opt('find')
       const body = find
-        ? findInPdf(d, find, idx).map((h) => `[s.${h.page}] ${h.text}`).join('\n\n')
-        : idx.map((i) => `--- səhifə ${i + 1} ---\n${d.text[i]}`).join('\n\n')
-      emit(d, `# ${d.title ?? d.url}\n${d.url} · ${d.pages} səhifə${d.scanned ? ' · SKAN (mətn qatı yoxdur)' : ''}${d.author ? ` · ${d.author}` : ''}\n\n${body}`)
+        ? findInPdf(d, find, idx).map((h) => `[p.${h.page}] ${h.text}`).join('\n\n')
+        : idx.map((i) => `--- page ${i + 1} ---\n${d.text[i]}`).join('\n\n')
+      emit(d, `# ${d.title ?? d.url}\n${d.url} · ${d.pages} pages${d.scanned ? ' · SCANNED (no text layer)' : ''}${d.author ? ` · ${d.author}` : ''}\n\n${body}`)
       break
     }
     case 'reddit': {
       if (!target) usage()
       const r = await redditSearch({ query: target, subreddit: opt('sub'), sort: opt('sort') as 'top', time: opt('time') as 'year', limit: num('limit') })
-      emit(r, `${r.posts.length} post (${r.via})\n\n${r.posts.map((p) => `- [r/${p.subreddit}] ${p.title} (${p.created ?? '?'}${p.score !== undefined ? `, ${p.score}↑ ${p.comments} şərh` : ''})\n  ${p.url}${p.text ? `\n  ${p.text.slice(0, 220).replace(/\n/g, ' ')}` : ''}`).join('\n')}`)
+      emit(r, `${r.posts.length} post (${r.via})\n\n${r.posts.map((p) => `- [r/${p.subreddit}] ${p.title} (${p.created ?? '?'}${p.score !== undefined ? `, ${p.score}↑ ${p.comments} comments` : ''})\n  ${p.url}${p.text ? `\n  ${p.text.slice(0, 220).replace(/\n/g, ' ')}` : ''}`).join('\n')}`)
       break
     }
     case 'thread': {
       if (!target) usage()
       const t = await redditThread(target, num('limit') ?? 40)
-      emit(t, `# ${t.post?.title ?? '?'} (r/${t.post?.subreddit}, ${t.post?.created})\n${t.post?.text ?? ''}\n\n## Şərhlər (${t.comments.length}, ${t.via})\n${t.comments.map((c) => `${'  '.repeat(c.depth ?? 0)}- ${c.created ?? ''}${c.score !== undefined ? ` ${c.score}↑` : ''}: ${c.text.slice(0, 400).replace(/\n/g, ' ')}`).join('\n')}`)
+      emit(t, `# ${t.post?.title ?? '?'} (r/${t.post?.subreddit}, ${t.post?.created})\n${t.post?.text ?? ''}\n\n## Comments (${t.comments.length}, ${t.via})\n${t.comments.map((c) => `${'  '.repeat(c.depth ?? 0)}- ${c.created ?? ''}${c.score !== undefined ? ` ${c.score}↑` : ''}: ${c.text.slice(0, 400).replace(/\n/g, ' ')}`).join('\n')}`)
       break
     }
     case 'subs': {
       if (!target) usage()
       const s = await findSubreddits(target)
-      emit(s, s.map((x) => `- r/${x.name}: ${x.title}${x.subscribers ? ` (${x.subscribers} üzv)` : ''}\n  ${x.url}`).join('\n'))
+      emit(s, s.map((x) => `- r/${x.name}: ${x.title}${x.subscribers ? ` (${x.subscribers} members)` : ''}\n  ${x.url}`).join('\n'))
       break
     }
     case 'portals': {
@@ -94,8 +94,8 @@ async function main() {
         res
           .map((r) =>
             r.mode === 'direct'
-              ? `## ${r.name}: ${r.listings.length} nəticə\n${r.listings.map((l) => `- ${l.title}${l.university ? ` | ${l.university}` : ''}${l.deadline ? ` | deadline ${l.deadline}` : ''}\n  ${l.url}${l.snippet ? `\n  ${l.snippet.slice(0, 160)}` : ''}`).join('\n')}`
-              : `## ${r.name}: birbaşa axtarılmır${r.error ? ` (${r.error})` : ''}\n  Brauzerdə aç: ${r.searchUrl}\n  Veb axtarış: ${r.webQuery}`,
+              ? `## ${r.name}: ${r.listings.length} results\n${r.listings.map((l) => `- ${l.title}${l.university ? ` | ${l.university}` : ''}${l.deadline ? ` | deadline ${l.deadline}` : ''}\n  ${l.url}${l.snippet ? `\n  ${l.snippet.slice(0, 160)}` : ''}`).join('\n')}`
+              : `## ${r.name}: not searched directly${r.error ? ` (${r.error})` : ''}\n  Open in browser: ${r.searchUrl}\n  Web search: ${r.webQuery}`,
           )
           .join('\n\n'),
       )
@@ -103,8 +103,8 @@ async function main() {
     }
     case 'check': {
       const s = await browserStatus()
-      console.log(s.ok ? `Brauzer işləyir: ${s.version} (ayar: ${s.channel})` : `Brauzer yoxdur: ${s.error}`)
-      console.log(`Portallar: ${Object.entries(PORTALS).map(([k, p]) => `${k}${p.direct ? '' : ' (veb axtarış)'}`).join(', ')}`)
+      console.log(s.ok ? `Browser works: ${s.version} (setting: ${s.channel})` : `No browser: ${s.error}`)
+      console.log(`Portals: ${Object.entries(PORTALS).map(([k, p]) => `${k}${p.direct ? '' : ' (web search)'}`).join(', ')}`)
       break
     }
     default:
@@ -114,7 +114,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(`Xəta: ${(e as Error).message}`)
+    console.error(`Error: ${(e as Error).message}`)
     process.exitCode = 1
   })
   .finally(() => closeBrowser())

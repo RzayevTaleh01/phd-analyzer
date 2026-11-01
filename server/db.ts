@@ -186,13 +186,16 @@ export interface Settings {
   /** Optional Reddit "script" app credentials (reddit.com/prefs/apps); without them the public RSS feeds are used. */
   redditClientId: string
   redditSecret: string
-  /** TRDesk task manager: agent API base URL, key (trd_...) and the plan Talvis works in (id or name). */
+  /** Optional TRDesk task manager: agent API base URL, key (trd_...) and the plan Talvis works in (id or name). Off while the key is empty. */
   trdeskUrl: string
   trdeskKey: string
   trdeskPlan: string
+  /** Language of board notes and job reports; chat replies follow the language the user writes in. */
+  language: string
 }
 
 const DEFAULT_SETTINGS: Settings = {
+  language: 'English',
   autoSwitch: true,
   model: 'claude-opus-5-5',
   chatEffort: 'medium',
@@ -243,7 +246,7 @@ export function currentThread(): Thread {
   return t ?? newThread()
 }
 
-export function newThread(title = 'Söhbət'): Thread {
+export function newThread(title = 'Chat'): Thread {
   const t: Thread = { id: crypto.randomUUID(), title, sdk_session: null, sdk_account: null, created_at: now() }
   db.prepare('INSERT INTO chat_threads (id, title, sdk_session, created_at) VALUES (?, ?, ?, ?)').run(t.id, t.title, null, t.created_at)
   mirror.touch('chat_threads', t.id)
@@ -307,31 +310,6 @@ export function noteUrls(text: string | string[]) {
 
 export function wasSeen(url: string): boolean {
   return Boolean(db.prepare('SELECT 1 FROM seen_urls WHERE url = ?').get(normUrl(url)))
-}
-
-// ---------- direction groups: two to start with, once ----------
-
-if (!kvGet('directionsSeeded', { done: false }).done) {
-  if (list('directions').length === 0) {
-    const t = now()
-    insert('directions', {
-      name: 'NLP',
-      description: 'Təbii dilin emalı: aşağı resurslu dillər, Azərbaycan dili, korpus, morfologiya, LLM-lər, təhsil üçün NLP.',
-      keywords: ['NLP', 'natural language processing', 'computational linguistics', 'low-resource', 'Azerbaijani', 'morpholog', 'tokeniz', 'corpus', 'language model', 'LLM', 'machine translation', 'grammatical error', 'speech', 'dialogue', 'syntax', 'semantics', 'educational NLP'],
-      color: '#2fd8ff',
-      status: 'exploring',
-      createdAt: t,
-    })
-    insert('directions', {
-      name: 'Adaptive learning',
-      description: 'AI in Education: adaptiv öyrənmə sistemləri, intellektual tutorlar, learner modeling, educational data mining, learning analytics, HCI və istifadəçi tədqiqatları.',
-      keywords: ['adaptive learning', 'adaptive', 'intelligent tutoring', 'tutor', 'learner model', 'educational data mining', 'learning analytics', 'AI in education', 'education', 'e-learning', 'online learning', 'feedback', 'personaliz', 'recommender', 'vocabulary', 'learners', 'teaching', 'HCI', 'human-computer interaction', 'user study'],
-      color: '#a594ff',
-      status: 'exploring',
-      createdAt: t,
-    })
-  }
-  kvSet('directionsSeeded', { done: true })
 }
 
 // ---------- full snapshot for the board ----------

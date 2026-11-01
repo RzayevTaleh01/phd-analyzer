@@ -119,7 +119,7 @@ export const phdTools = [
       interests: z.string().optional(),
       background: z.string().optional(),
       languages: z.string().optional(),
-      directions: z.array(z.string()).optional().describe('broad research directions, e.g. ["Natural Language Processing", "Adaptive learning systems"]'),
+      directions: z.array(z.string()).optional().describe('the research interests the user typed, e.g. ["NLP", "HCI", "adaptive learning"]; Talvis groups them into direction groups'),
       rankingSystem: z.enum(['QS', 'THE', 'ARWU', 'any']).optional(),
       rankingMax: z.number().int().min(0).optional().describe('only universities in the top N of the ranking; 0 = no limit'),
       conditions: z.array(z.enum(CONDITIONS.map((c) => c.key) as [string, ...string[]])).optional(),
@@ -129,7 +129,7 @@ export const phdTools = [
     },
     safe(async (p) => {
       const prof = setProfile(p)
-      logActivity('ai', 'profile', 'Profil yeniləndi')
+      logActivity('ai', 'profile', 'Profile updated')
       return ok(prof)
     }),
   ),
@@ -142,7 +142,7 @@ export const phdTools = [
       const existing = list('topics').find((x) => x.title.toLowerCase() === t.title.toLowerCase())
       if (existing) return ok({ note: 'already exists', topic: existing })
       const topic = insert('topics', { ...t, priority: (t.priority ?? 2) as 1 | 2 | 3, status: 'active', createdAt: new Date().toISOString() })
-      logActivity('ai', 'topics', `Mövzu əlavə olundu: ${topic.title}`)
+      logActivity('ai', 'topics', `Topic added: ${topic.title}`)
       return ok(topic)
     }),
   ),
@@ -167,7 +167,7 @@ export const phdTools = [
       langCertSource: z.string().optional().describe('URL of the official language requirements page'),
       fitNote: z.string().optional().describe('one or two lines: how it meets the directions and conditions'),
       admitChance: z.number().int().min(0).max(100).optional().describe('estimated admission chance for this applicant, 0-100 (see set_admission_chance)'),
-      admitNote: z.string().optional().describe('decisive factors behind admitChance, in Azerbaijani'),
+      admitNote: z.string().optional().describe('decisive factors behind admitChance, in the board language'),
       admitSource: z.string().optional().describe('URL of the official page or statistic the estimate leans on most'),
     },
     safe(async ({ name, ...extra }) => {
@@ -176,7 +176,7 @@ export const phdTools = [
       if (extra.admitChance !== undefined && !extra.admitNote) return fail('admitChance needs admitNote (the factors behind the estimate)')
       const admitAt = extra.admitChance !== undefined ? new Date().toISOString() : undefined
       const u = await resolveUniversity(name, Object.fromEntries(Object.entries({ ...extra, admitAt }).filter(([, v]) => v !== undefined)))
-      logActivity('ai', 'universities', `Universitet: ${u.name}${u.rankLabel ? ` (${u.rankLabel})` : ''}`)
+      logActivity('ai', 'universities', `University: ${u.name}${u.rankLabel ? ` (${u.rankLabel})` : ''}`)
       return ok(u)
     }),
   ),
@@ -187,7 +187,7 @@ export const phdTools = [
     {
       universityId: z.number().int(),
       chance: z.number().int().min(0).max(100),
-      note: z.string().describe('3-5 lines in Azerbaijani: the decisive factors, published numbers with their year, what would raise the chance'),
+      note: z.string().describe('3-5 lines in the board language: the decisive factors, published numbers with their year, what would raise the chance'),
       source: z.string().optional().describe('URL of the official page or statistic the estimate leans on most (must have appeared in a tool result)'),
     },
     safe(async ({ universityId, chance, note, source }) => {
@@ -195,7 +195,7 @@ export const phdTools = [
       // '' clears the source of an earlier estimate.
       const u = update('universities', universityId, { admitChance: chance, admitNote: note, admitSource: source ?? '', admitAt: new Date().toISOString() })
       if (!u) return fail(`university ${universityId} not found`)
-      logActivity('ai', 'universities', `Qəbul şansı: ${u.name} - ${chance}%`)
+      logActivity('ai', 'universities', `Admission chance: ${u.name} - ${chance}%`)
       return ok({ id: u.id, name: u.name, admitChance: chance })
     }),
   ),
@@ -220,7 +220,7 @@ export const phdTools = [
       const patch = { ...d, verifiedAt: d.verified ? new Date().toISOString() : undefined }
       const existing = list('deadlines').find((x) => x.title.toLowerCase() === d.title.toLowerCase() && x.universityId === d.universityId)
       const saved = existing ? update('deadlines', existing.id, patch)! : insert('deadlines', { ...patch, status: 'open' })
-      logActivity('ai', 'deadlines', `Deadline: ${saved.title} - ${saved.dueDate}${saved.verified ? ' (təsdiqli)' : ''}`)
+      logActivity('ai', 'deadlines', `Deadline: ${saved.title} - ${saved.dueDate}${saved.verified ? ' (verified)' : ''}`)
       return ok(saved)
     }),
   ),
@@ -239,7 +239,7 @@ export const phdTools = [
       const dup = list('tasks').find((x) => x.title.toLowerCase() === t.title.toLowerCase() && x.dueDate === t.dueDate && x.status !== 'done')
       if (dup) return ok({ note: 'already exists', task: dup })
       const task = insert('tasks', { ...t, priority: (t.priority ?? 2) as 1 | 2 | 3, status: 'todo', createdBy: 'ai' })
-      logActivity('ai', 'today', `Tapşırıq: ${task.title}`)
+      logActivity('ai', 'today', `Task: ${task.title}`)
       return ok(task)
     }),
   ),
@@ -258,7 +258,7 @@ export const phdTools = [
     safe(async (g) => {
       const existing = list('groups').find((x) => x.name.toLowerCase() === g.name.toLowerCase())
       const saved = existing ? update('groups', existing.id, { ...g, topicIds: [...new Set([...existing.topicIds, ...(g.topicIds ?? [])])] })! : insert('groups', { ...g, topicIds: g.topicIds ?? [] })
-      logActivity('ai', 'groups', `Qrup: ${saved.name}`)
+      logActivity('ai', 'groups', `Research group: ${saved.name}`)
       return ok(saved)
     }),
   ),
@@ -283,12 +283,12 @@ export const phdTools = [
         const [a] = await oa.getAuthors([openalexId])
         if (!a) return fail(`OpenAlex author ${openalexId} not found`)
         const { researcher, created } = saveResearcher(a, extra)
-        logActivity('ai', 'researchers', `Tədqiqatçı: ${researcher.name}`)
+        logActivity('ai', 'researchers', `Researcher: ${researcher.name}`)
         return ok({ created, researcher })
       }
       if (!name) return fail('give openalexId or name')
       const r = insert('researchers', { name, ...extra, concepts: [], topicIds: extra.topicIds ?? [], status: 'new' })
-      logActivity('ai', 'researchers', `Tədqiqatçı: ${r.name}`)
+      logActivity('ai', 'researchers', `Researcher: ${r.name}`)
       return ok({ created: true, researcher: r })
     }),
   ),
@@ -315,7 +315,7 @@ export const phdTools = [
         out.push({ ref: label, id: paper.id, title: paper.title, created })
       }
       const n = out.filter((o) => o.created).length
-      if (n) logActivity('ai', 'papers', `${n} məqalə kitabxanaya əlavə olundu`)
+      if (n) logActivity('ai', 'papers', `${n} papers added to the library`)
       return ok(out)
     }),
   ),
@@ -361,7 +361,7 @@ export const phdTools = [
     safe(async ({ openalexId, name, ...extra }) => {
       const src = openalexId ? await oa.getSource(openalexId) : undefined
       const v = saveVenue(src ?? { name }, Object.fromEntries(Object.entries(extra).filter(([, x]) => x !== undefined)))
-      logActivity('ai', 'publish', `Nəşr yeri: ${v.name}`)
+      logActivity('ai', 'publish', `Venue: ${v.name}`)
       return ok(v)
     }),
   ),
@@ -380,7 +380,7 @@ export const phdTools = [
     safe(async ({ id, ...d }) => {
       const doc = id ? update('docs', id, d) : insert('docs', { ...d, status: d.status ?? 'draft' })
       if (!doc) return fail(`document ${id} not found`)
-      logActivity('ai', 'documents', `Sənəd: ${doc.title}`)
+      logActivity('ai', 'documents', `Document: ${doc.title}`)
       return ok({ id: doc.id, title: doc.title, status: doc.status })
     }),
   ),
@@ -397,7 +397,7 @@ export const phdTools = [
       }
       const item = update(type, id, p as never)
       if (!item) return fail(`${type} ${id} not found`)
-      logActivity('ai', COLL_MODULE[type], `Yeniləndi: ${type} #${id}`)
+      logActivity('ai', COLL_MODULE[type], `Updated: ${type} #${id}`)
       return ok(compact(type, item as unknown as Record<string, unknown>))
     }),
   ),
@@ -408,7 +408,7 @@ export const phdTools = [
     { type: collEnum, id: z.number().int() },
     safe(async ({ type, id }) => {
       const okDel = remove(type, id)
-      if (okDel) logActivity('ai', COLL_MODULE[type], `Silindi: ${type} #${id}`)
+      if (okDel) logActivity('ai', COLL_MODULE[type], `Deleted: ${type} #${id}`)
       return okDel ? ok('deleted') : fail('not found')
     }),
   ),
@@ -661,7 +661,7 @@ export const phdTools = [
       const existing = list('positions').find((x) => normUrl(x.url) === normUrl(url))
       const data = { ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)), universityId: uniId, url, portal: portalOf(url) }
       const saved = existing ? update('positions', existing.id, data)! : insert('positions', { ...data, status: p.status ?? 'found', foundAt: new Date().toISOString() })
-      logActivity('ai', 'positions', `PhD elanı: ${saved.title.slice(0, 80)}`)
+      logActivity('ai', 'positions', `PhD position: ${saved.title.slice(0, 80)}`)
       return ok(saved)
     }),
   ),
@@ -673,7 +673,7 @@ export const phdTools = [
       subject: z.string().describe('university or program name'),
       universityId: z.number().int().optional(),
       source: z.enum(['reddit', 'web', 'mixed']).optional(),
-      summary: z.string().describe('3-6 sentences: the overall picture, in Azerbaijani'),
+      summary: z.string().describe('3-6 sentences: the overall picture, in the board language'),
       sentiment: z.number().int().min(-2).max(2),
       themes: z.array(z.object({ theme: z.string(), tone: z.enum(['positive', 'negative', 'mixed']), note: z.string() })).min(1),
       evidence: z
@@ -690,7 +690,7 @@ export const phdTools = [
       const existing = list('insights').find((x) => (uniId ? x.universityId === uniId : x.subject.toLowerCase() === a.subject.toLowerCase()) && x.source === source)
       const data = { ...a, universityId: uniId, source, createdAt: new Date().toISOString() }
       const saved = existing ? update('insights', existing.id, data)! : insert('insights', data)
-      logActivity('ai', 'insights', `Tələbə rəyi: ${saved.subject} (${saved.sentiment > 0 ? '+' : ''}${saved.sentiment})`)
+      logActivity('ai', 'insights', `Student voice: ${saved.subject} (${saved.sentiment > 0 ? '+' : ''}${saved.sentiment})`)
       return ok({ id: saved.id, subject: saved.subject, evidence: saved.evidence.length })
     }),
   ),
@@ -698,7 +698,7 @@ export const phdTools = [
   // ---------- research direction groups ----------
   tool(
     'save_direction',
-    'Create or update a research direction group (e.g. NLP, Adaptive learning). keywords decide which board items fall into it automatically. Give id to update. Do not change the user\'s interest rating.',
+    'Create or update a research direction group (e.g. Natural language processing, Human-computer interaction). keywords decide which board items fall into it automatically. Give id to update. Do not change the user\'s interest rating.',
     {
       id: z.number().int().optional(),
       name: z.string().optional(),
@@ -711,13 +711,13 @@ export const phdTools = [
       if (id) {
         const saved = update('directions', id, patch)
         if (!saved) return fail(`direction ${id} not found`)
-        logActivity('ai', 'directions', `İstiqamət yeniləndi: ${saved.name}`)
+        logActivity('ai', 'directions', `Direction updated: ${saved.name}`)
         return ok(saved)
       }
       if (!d.name) return fail('name needed')
       const color = DIRECTION_COLORS[list('directions').length % DIRECTION_COLORS.length]
       const saved = insert('directions', { keywords: [], description: '', status: 'exploring', ...patch, name: d.name, color, createdAt: new Date().toISOString() })
-      logActivity('ai', 'directions', `Yeni istiqamət: ${saved.name}`)
+      logActivity('ai', 'directions', `New direction: ${saved.name}`)
       return ok(saved)
     }),
   ),
@@ -744,7 +744,7 @@ export const phdTools = [
         update(r.type, r.id, { directionIds: next } as never)
         out.push(`${r.type} ${r.id}: ${next ? next.map((x) => `A${x}`).join(',') : 'automatic'}`)
       }
-      logActivity('ai', 'directions', `${refs.length} element istiqamətə bağlandı`)
+      logActivity('ai', 'directions', `${refs.length} items linked to directions`)
       return ok(out)
     }),
   ),
@@ -755,7 +755,7 @@ export const phdTools = [
     {
       directionId: z.number().int(),
       scores: z.record(z.enum(CRITERION_KEYS as [string, ...string[]]), z.object({ score: z.number().min(0).max(10), note: z.string() })),
-      summary: z.string().describe('3-6 sentences in Azerbaijani'),
+      summary: z.string().describe('3-6 sentences in the board language'),
       strengths: z.array(z.string()).max(6),
       risks: z.array(z.string()).max(6),
       nextSteps: z.array(z.string()).max(6),
@@ -775,7 +775,7 @@ export const phdTools = [
       if (badRefs.length) return fail(`evidence refs not on the board / not seen in tool results: ${badRefs.join(', ')}`)
       const analysis = { ...a, overall: overallScore(a.scores, d.interest), analyzedAt: new Date().toISOString() }
       update('directions', directionId, { analysis })
-      logActivity('ai', 'directions', `İstiqamət analizi: ${d.name} - ${analysis.overall ?? '?'}/10`)
+      logActivity('ai', 'directions', `Direction analysis: ${d.name} - ${analysis.overall ?? '?'}/10`)
       return ok({ direction: d.name, overall: analysis.overall })
     }),
   ),
@@ -845,7 +845,7 @@ export const phdTools = [
           out.push({ text: t.text, error: (e as Error).message })
         }
       }
-      logActivity('ai', 'today', `TRDesk: ${out.filter((o) => o.id).length} tapşırıq əlavə olundu`)
+      logActivity('ai', 'today', `TRDesk: ${out.filter((o) => o.id).length} tasks added`)
       return ok(out)
     }),
   ),
@@ -913,7 +913,7 @@ export const phdTools = [
         if (!title) return fail('title needed')
         const r = await trdesk.createPlan({ title, description, startDate: startDate ?? todayISO(), color })
         if (setDefault) setSettings({ trdeskPlan: r.id })
-        logActivity('ai', 'today', `TRDesk plan yaradıldı: ${title}`)
+        logActivity('ai', 'today', `TRDesk plan created: ${title}`)
         return ok(r)
       }
       if (!plan) return fail('plan needed')
@@ -940,9 +940,9 @@ export const phdTools = [
   // ---------- background jobs ----------
   tool(
     'start_job',
-    'Start a long research job in the background (it fills the board on its own). kinds: find_universities (universities matching the profile criteria; optional note), gap_analysis (topicId), scout_university (universityId, optional topicIds), verify_deadlines (optional universityId), daily_plan, venue_match (title, abstract), student_voice (universityId, or note = university name: what students say on Reddit), portal_scan (PhD positions on portals for the profile; optional note, universityId), direction_fit (explore and score research direction groups to find the best fit; optional directionId for one, otherwise all), admission_chance (estimate the admission chance at the board universities; optional universityId for one).',
+    'Start a long research job in the background (it fills the board on its own). kinds: setup_directions (group the profile research interests into direction groups, add starter topics, then start find_universities and direction_fit), find_universities (universities matching the profile criteria; optional note), gap_analysis (topicId), scout_university (universityId, optional topicIds), verify_deadlines (optional universityId), daily_plan, venue_match (title, abstract), student_voice (universityId, or note = university name: what students say on Reddit), portal_scan (PhD positions on portals for the profile; optional note, universityId), direction_fit (explore and score research direction groups to find the best fit; optional directionId for one, otherwise all), admission_chance (estimate the admission chance at the board universities; optional universityId for one).',
     {
-      kind: z.enum(['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit', 'admission_chance']),
+      kind: z.enum(['find_universities', 'gap_analysis', 'scout_university', 'verify_deadlines', 'daily_plan', 'venue_match', 'student_voice', 'portal_scan', 'direction_fit', 'admission_chance', 'setup_directions']),
       directionId: z.number().int().optional(),
       topicId: z.number().int().optional(),
       topicIds: ids,
@@ -960,8 +960,9 @@ export const phdTools = [
 
 export const PHD_TOOL_NAMES = phdTools.map((t) => `mcp__phd__${t.name}`)
 
-export function phdServer() {
-  return createSdkMcpServer({ name: 'phd', version: '0.1.0', tools: phdTools })
+/** TRDesk tools are left out unless the optional integration has a key. */
+export function phdServer(withTrdesk: boolean) {
+  return createSdkMcpServer({ name: 'phd', version: '0.1.0', tools: withTrdesk ? phdTools : phdTools.filter((t) => !t.name.startsWith('trdesk_')) })
 }
 
 // ---------- UI metadata: which module a tool touches, and a readable label ----------
@@ -971,57 +972,57 @@ export function toolMeta(name: string, input: Record<string, unknown>): { module
   const s = (k: string) => (input[k] === undefined ? '' : String(input[k]))
   const typeModule = (): ModuleKey => (COLL_MODULE as Record<string, ModuleKey>)[s('type')] ?? 'core'
   switch (n) {
-    case 'get_overview': return { module: 'core', label: 'Sistem vəziyyəti oxundu' }
-    case 'list_items': return { module: typeModule(), label: `Siyahı: ${s('type')}${input.query ? ` "${s('query')}"` : ''}` }
-    case 'get_item': return { module: typeModule(), label: `Oxundu: ${s('type')} #${s('id')}` }
-    case 'save_profile': return { module: 'profile', label: 'Profil yeniləndi' }
-    case 'add_topic': return { module: 'topics', label: `Mövzu: ${s('title')}` }
-    case 'add_university': return { module: 'universities', label: `Universitet: ${s('name')}` }
-    case 'set_admission_chance': return { module: 'universities', label: `Qəbul şansı: U${s('universityId')} - ${s('chance')}%` }
+    case 'get_overview': return { module: 'core', label: 'Read board state' }
+    case 'list_items': return { module: typeModule(), label: `List: ${s('type')}${input.query ? ` "${s('query')}"` : ''}` }
+    case 'get_item': return { module: typeModule(), label: `Read: ${s('type')} #${s('id')}` }
+    case 'save_profile': return { module: 'profile', label: 'Profile updated' }
+    case 'add_topic': return { module: 'topics', label: `Topic: ${s('title')}` }
+    case 'add_university': return { module: 'universities', label: `University: ${s('name')}` }
+    case 'set_admission_chance': return { module: 'universities', label: `Admission chance: U${s('universityId')} - ${s('chance')}%` }
     case 'add_deadline': return { module: 'deadlines', label: `Deadline: ${s('title')} (${s('dueDate')})` }
-    case 'add_task': return { module: 'today', label: `Tapşırıq: ${s('title')}` }
-    case 'add_group': return { module: 'groups', label: `Qrup: ${s('name')}` }
-    case 'add_researcher': return { module: 'researchers', label: `Tədqiqatçı yadda saxlanılır ${s('name') || s('openalexId')}` }
-    case 'save_papers': return { module: 'papers', label: `${(input.items as unknown[] | undefined)?.length ?? 0} məqalə yadda saxlanılır` }
-    case 'add_gap': return { module: 'gaps', label: `Gap: ${s('title')}` }
-    case 'add_venue': return { module: 'publish', label: `Nəşr yeri: ${s('name')}` }
-    case 'save_document': return { module: 'documents', label: `Sənəd: ${s('title')}` }
-    case 'update_item': return { module: typeModule(), label: `Yeniləmə: ${s('type')} #${s('id')}` }
-    case 'delete_item': return { module: typeModule(), label: `Silmə: ${s('type')} #${s('id')}` }
-    case 'search_papers': return { module: 'papers', label: `Məqalə axtarışı (${s('source') || 'openalex'}): "${s('query')}"` }
-    case 'paper_details': return { module: 'papers', label: `Məqalə detalları: ${s('openalexId') || s('doi') || s('arxivId') || s('s2Id')}` }
-    case 'related_papers': return { module: 'papers', label: `Sitat şəbəkəsi (${s('direction')})` }
+    case 'add_task': return { module: 'today', label: `Task: ${s('title')}` }
+    case 'add_group': return { module: 'groups', label: `Research group: ${s('name')}` }
+    case 'add_researcher': return { module: 'researchers', label: `Saving researcher ${s('name') || s('openalexId')}` }
+    case 'save_papers': return { module: 'papers', label: `${(input.items as unknown[] | undefined)?.length ?? 0} papers being saved` }
+    case 'add_gap': return { module: 'gaps', label: `Research gap: ${s('title')}` }
+    case 'add_venue': return { module: 'publish', label: `Venue: ${s('name')}` }
+    case 'save_document': return { module: 'documents', label: `Document: ${s('title')}` }
+    case 'update_item': return { module: typeModule(), label: `Update: ${s('type')} #${s('id')}` }
+    case 'delete_item': return { module: typeModule(), label: `Delete: ${s('type')} #${s('id')}` }
+    case 'search_papers': return { module: 'papers', label: `Paper search (${s('source') || 'openalex'}): "${s('query')}"` }
+    case 'paper_details': return { module: 'papers', label: `Paper details: ${s('openalexId') || s('doi') || s('arxivId') || s('s2Id')}` }
+    case 'related_papers': return { module: 'papers', label: `Citation network (${s('direction')})` }
     case 'find_institution': return { module: 'universities', label: `OpenAlex: "${s('name')}"` }
-    case 'find_researchers_at': return { module: 'researchers', label: `"${s('query')}" üzrə tədqiqatçılar (${s('institutionId')})` }
-    case 'search_authors': return { module: 'researchers', label: `Müəllif axtarışı: ${s('name')}` }
-    case 'researcher_works': return { module: 'researchers', label: `Tədqiqatçının məqalələri ${s('openalexId')}` }
-    case 'find_venues': return { module: 'publish', label: `Jurnal/konfrans axtarışı: "${s('query')}"` }
-    case 'verify_doi': return { module: 'papers', label: `DOI yoxlanışı: ${s('doi')}` }
+    case 'find_researchers_at': return { module: 'researchers', label: `Researchers on "${s('query')}" (${s('institutionId')})` }
+    case 'search_authors': return { module: 'researchers', label: `Author search: ${s('name')}` }
+    case 'researcher_works': return { module: 'researchers', label: `Researcher's papers ${s('openalexId')}` }
+    case 'find_venues': return { module: 'publish', label: `Journal/conference search: "${s('query')}"` }
+    case 'verify_doi': return { module: 'papers', label: `DOI check: ${s('doi')}` }
     case 'topic_trend': return { module: 'topics', label: `Trend: "${s('query')}"` }
-    case 'read_pdf': return { module: input.paperId ? 'papers' : 'core', label: input.paperId ? `PDF oxunur: P${s('paperId')}${input.find ? ` ("${s('find')}")` : ''}` : `PDF oxunur: ${s('url').slice(0, 70)}` }
-    case 'browse_page': return { module: 'core', label: `Brauzer: ${s('url').slice(0, 70)}` }
+    case 'read_pdf': return { module: input.paperId ? 'papers' : 'core', label: input.paperId ? `Reading PDF: P${s('paperId')}${input.find ? ` ("${s('find')}")` : ''}` : `Reading PDF: ${s('url').slice(0, 70)}` }
+    case 'browse_page': return { module: 'core', label: `Browser: ${s('url').slice(0, 70)}` }
     case 'reddit_search': return { module: 'insights', label: `Reddit: "${s('query')}"${input.subreddit ? ` r/${s('subreddit')}` : ''}` }
-    case 'reddit_thread': return { module: 'insights', label: 'Reddit mövzusu oxunur' }
-    case 'find_subreddits': return { module: 'insights', label: `Subreddit axtarışı: "${s('query')}"` }
-    case 'portal_search': return { module: 'positions', label: `PhD portalları: "${s('query')}"` }
-    case 'save_position': return { module: 'positions', label: `PhD elanı: ${s('title').slice(0, 60)}` }
-    case 'add_insight': return { module: 'insights', label: `Tələbə rəyi: ${s('subject')}` }
-    case 'save_direction': return { module: 'directions', label: `İstiqamət: ${s('name') || `A${s('id')}`}` }
-    case 'tag_directions': return { module: 'directions', label: `${(input.items as unknown[] | undefined)?.length ?? 0} element istiqamətə bağlanır` }
-    case 'save_direction_analysis': return { module: 'directions', label: `İstiqamət analizi: A${s('directionId')}` }
-    case 'trdesk_plans': return { module: 'today', label: 'TRDesk: planlar' }
-    case 'trdesk_plan': return { module: 'today', label: `TRDesk: ${s('plan') || 'PhD plan'} oxunur` }
-    case 'trdesk_sync': return { module: 'today', label: 'TRDesk: board sinxronlaşdırılır' }
-    case 'trdesk_add_tasks': return { module: 'today', label: `TRDesk: ${(input.tasks as unknown[] | undefined)?.length ?? 0} tapşırıq əlavə olunur` }
-    case 'trdesk_update_task': return { module: 'today', label: `TRDesk: tapşırıq dəyişir` }
-    case 'trdesk_task_done': return { module: 'today', label: `TRDesk: tapşırıq ${input.done === false ? 'açılır' : 'tamamlanır'}` }
-    case 'trdesk_delete_task': return { module: 'today', label: 'TRDesk: tapşırıq silinir' }
-    case 'trdesk_day_note': return { module: 'today', label: `TRDesk: ${s('date')} qeydi` }
+    case 'reddit_thread': return { module: 'insights', label: 'Reading Reddit thread' }
+    case 'find_subreddits': return { module: 'insights', label: `Subreddit search: "${s('query')}"` }
+    case 'portal_search': return { module: 'positions', label: `PhD portals: "${s('query')}"` }
+    case 'save_position': return { module: 'positions', label: `PhD position: ${s('title').slice(0, 60)}` }
+    case 'add_insight': return { module: 'insights', label: `Student voice: ${s('subject')}` }
+    case 'save_direction': return { module: 'directions', label: `Direction: ${s('name') || `A${s('id')}`}` }
+    case 'tag_directions': return { module: 'directions', label: `${(input.items as unknown[] | undefined)?.length ?? 0} items being linked to directions` }
+    case 'save_direction_analysis': return { module: 'directions', label: `Direction analysis: A${s('directionId')}` }
+    case 'trdesk_plans': return { module: 'today', label: 'TRDesk: plans' }
+    case 'trdesk_plan': return { module: 'today', label: `TRDesk: reading ${s('plan') || 'PhD plan'}` }
+    case 'trdesk_sync': return { module: 'today', label: 'TRDesk: syncing the board' }
+    case 'trdesk_add_tasks': return { module: 'today', label: `TRDesk: ${(input.tasks as unknown[] | undefined)?.length ?? 0} tasks being added` }
+    case 'trdesk_update_task': return { module: 'today', label: `TRDesk: updating task` }
+    case 'trdesk_task_done': return { module: 'today', label: `TRDesk: ${input.done === false ? 'reopening' : 'completing'} task` }
+    case 'trdesk_delete_task': return { module: 'today', label: 'TRDesk: deleting task' }
+    case 'trdesk_day_note': return { module: 'today', label: `TRDesk: note for ${s('date')}` }
     case 'trdesk_manage_plan': return { module: 'today', label: `TRDesk plan: ${s('action')} ${s('title') || s('plan')}` }
-    case 'trdesk_agenda': return { module: 'today', label: `TRDesk gündəliyi ${s('from')}` }
-    case 'start_job': return { module: 'core', label: `Arxa plan işi başladı: ${s('kind')}` }
-    case 'WebSearch': return { module: 'core', label: `Veb axtarış: "${s('query')}"` }
-    case 'WebFetch': return { module: 'core', label: `Səhifə oxunur: ${s('url').slice(0, 70)}` }
+    case 'trdesk_agenda': return { module: 'today', label: `TRDesk agenda ${s('from')}` }
+    case 'start_job': return { module: 'core', label: `Background job started: ${s('kind')}` }
+    case 'WebSearch': return { module: 'core', label: `Web search: "${s('query')}"` }
+    case 'WebFetch': return { module: 'core', label: `Reading page: ${s('url').slice(0, 70)}` }
     default: return { module: 'core', label: n }
   }
 }

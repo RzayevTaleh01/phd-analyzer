@@ -9,7 +9,7 @@ function UsageBar({ label, value, resets }: { label: string; value?: number | nu
   if (value === undefined || value === null) return null
   const pct = Math.max(0, Math.min(100, value))
   return (
-    <div className="usage" title={resets ? `Sıfırlanır: ${hhmm(resets)}` : undefined}>
+    <div className="usage" title={resets ? `Resets: ${hhmm(resets)}` : undefined}>
       <span className="mono faint">{label}</span>
       <div className="bar grow" style={{ '--accent': pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--amber)' : 'var(--green)' } as React.CSSProperties}><i style={{ width: `${pct}%` }} /></div>
       <span className="mono">{Math.round(pct)}%</span>
@@ -45,34 +45,34 @@ function AccountRow({ a, active }: { a: Account; active: boolean }) {
             ) : (
               <b>{a.label}</b>
             )}
-            {!editing && <button className="mod-btn" title="Adını dəyiş" onClick={() => setEditing(true)}><Pencil size={11} /></button>}
-            {active && <span className="chip cyan solid">aktiv</span>}
+            {!editing && <button className="mod-btn" title="Rename" onClick={() => setEditing(true)}><Pencil size={11} /></button>}
+            {active && <span className="chip cyan solid">active</span>}
             {a.plan && <span className="chip">{a.plan}</span>}
           </div>
           <div className="faint" style={{ fontSize: 11.5, marginTop: 3 }}>
-            {a.state === 'connected' ? a.email ?? 'bağlı' : a.state === 'checking' ? 'yoxlanılır...' : a.state === 'error' ? `xəta: ${a.detail ?? ''}` : 'giriş edilməyib'}
+            {a.state === 'connected' ? a.email ?? 'connected' : a.state === 'checking' ? 'checking...' : a.state === 'error' ? `error: ${a.detail ?? ''}` : 'not signed in'}
           </div>
-          {limited && <div style={{ fontSize: 11.5, marginTop: 3, color: 'var(--amber)' }}>Limit bitib - {hhmm(a.limitedUntil)} sıfırlanır</div>}
-          {dup && <div style={{ fontSize: 11.5, marginTop: 3, color: 'var(--red)' }}>Bu, başqa sətirdəki hesabın eynisidir. Fərqli Claude hesabı ilə daxil ol.</div>}
+          {limited && <div style={{ fontSize: 11.5, marginTop: 3, color: 'var(--amber)' }}>Limit reached - resets {hhmm(a.limitedUntil)}</div>}
+          {dup && <div style={{ fontSize: 11.5, marginTop: 3, color: 'var(--red)' }}>This is the same account as another row. Sign in with a different Claude account.</div>}
           {a.usage && (
             <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <UsageBar label="5 SAAT" value={a.usage.fiveHour} resets={a.usage.fiveHourResetsAt} />
-              <UsageBar label="7 GÜN" value={a.usage.sevenDay} resets={a.usage.sevenDayResetsAt} />
+              <UsageBar label="5 HOURS" value={a.usage.fiveHour} resets={a.usage.fiveHourResetsAt} />
+              <UsageBar label="7 DAYS" value={a.usage.sevenDay} resets={a.usage.sevenDayResetsAt} />
             </div>
           )}
         </div>
         <div className="row" style={{ gap: 4 }}>
-          {a.state !== 'connected' && <button className="btn sm primary" onClick={() => login(a.id)}><KeyRound size={12} /> Daxil ol</button>}
-          {!active && a.state === 'connected' && <button className="btn sm" onClick={() => accountAction(`/${a.id}/activate`)}><Check size={12} /> Aktiv et</button>}
-          <button className="mod-btn" title="Yoxla" onClick={() => accountAction(`/${a.id}/check`)}><RefreshCw size={12} /></button>
+          {a.state !== 'connected' && <button className="btn sm primary" onClick={() => login(a.id)}><KeyRound size={12} /> Sign in</button>}
+          {!active && a.state === 'connected' && <button className="btn sm" onClick={() => accountAction(`/${a.id}/activate`)}><Check size={12} /> Activate</button>}
+          <button className="mod-btn" title="Check" onClick={() => accountAction(`/${a.id}/check`)}><RefreshCw size={12} /></button>
           {a.id !== 'main' &&
             (ask ? (
               <>
-                <button className="btn sm danger" onClick={() => accountAction(`/${a.id}`, 'DELETE')}>Sil</button>
-                <button className="btn sm ghost" onClick={() => setAsk(false)}>Ləğv</button>
+                <button className="btn sm danger" onClick={() => accountAction(`/${a.id}`, 'DELETE')}>Delete</button>
+                <button className="btn sm ghost" onClick={() => setAsk(false)}>Cancel</button>
               </>
             ) : (
-              <button className="mod-btn" title="Hesabı sil (bu kompüterdəki girişi)" onClick={() => setAsk(true)}><Trash2 size={12} /></button>
+              <button className="mod-btn" title="Delete account (removes its sign-in on this computer)" onClick={() => setAsk(true)}><Trash2 size={12} /></button>
             ))}
         </div>
       </div>
@@ -87,13 +87,13 @@ export default function AccountsSection() {
     <div>
       <label className={`cond ${accounts.autoSwitch ? 'on' : ''}`} style={{ marginBottom: 10 }}>
         <input type="checkbox" checked={accounts.autoSwitch} onChange={(e) => accountAction('/auto-switch', 'PUT', { on: e.target.checked })} />
-        Aktiv hesabın limiti bitəndə avtomatik növbəti hesaba keç (cavab yarımçıq qalmır, yeni hesabla davam edir)
+        When the active account hits its limit, switch to the next account automatically (the reply is not cut off; it continues with the new account)
       </label>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {accounts.accounts.map((a) => <AccountRow key={a.id} a={a} active={a.id === accounts.activeId} />)}
       </div>
       <div style={{ marginTop: 10 }}><ClaudeLogin onlyProgress /></div>
-      <button className="btn" style={{ marginTop: 10 }} onClick={() => accountAction('', 'POST', {})}><Plus size={13} /> Hesab əlavə et</button>
+      <button className="btn" style={{ marginTop: 10 }} onClick={() => accountAction('', 'POST', {})}><Plus size={13} /> Add account</button>
     </div>
   )
 }

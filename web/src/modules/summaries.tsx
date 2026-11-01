@@ -3,7 +3,7 @@ import { Check, FileText, Languages, Library, Mail, Radar, ScrollText, ShieldAle
 import { byAdmitChance, CONDITION_BY_KEY, rankingLabel } from '../../../shared/criteria'
 import { directionCounts, overallScore } from '../../../shared/directions'
 import type { AppState, Doc } from '../../../shared/types'
-import { az, daysUntil, dayLabel, fmtShort, initials, monthShort, todayISO, urgency, weekday } from '../lib/util'
+import { statusLabel, daysUntil, dayLabel, fmtShort, initials, monthShort, todayISO, urgency, weekday } from '../lib/util'
 import { AdmitBar } from '../panels/ui'
 
 type P = { s: AppState }
@@ -45,14 +45,14 @@ export function TodaySummary({ s }: P) {
         </div>
         <div className="grow" />
         <div className="col" style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-          {overdue > 0 && <span className="chip red">{overdue} gecikmiş</span>}
-          <span className="chip amber">{urgent} deadline / 14g</span>
+          {overdue > 0 && <span className="chip red">{overdue} overdue</span>}
+          <span className="chip amber">{urgent} deadlines / 14d</span>
         </div>
         <Ring value={done} total={tasks.length} />
       </div>
-      <div className="section-label">Bugünkü tapşırıqlar</div>
+      <div className="section-label">Tasks for today</div>
       <div className="list">
-        {tasks.length === 0 && <div className="empty">Bu gün üçün tapşırıq yoxdur. Core-dan "bugünkü planımı qur" de.</div>}
+        {tasks.length === 0 && <div className="empty">No tasks for today. Ask Talvis to "build my plan for today".</div>}
         {tasks.map((t) => (
           <div key={t.id} className={`item ${t.status === 'done' ? 'done' : ''}`}>
             <span className={`check ${t.status === 'done' ? 'on' : t.status === 'doing' ? 'half' : ''}`}>
@@ -79,17 +79,17 @@ export function DeadlinesSummary({ s }: P) {
         <div className="row" style={{ alignItems: 'flex-end' }}>
           <div>
             <div className="big-count" style={{ color: `var(--${urgency(n) === 'cyan' ? 'cyan' : urgency(n)})` }}>{n}</div>
-            <div className="big-unit">gün qalıb</div>
+            <div className="big-unit">days left</div>
           </div>
           <div className="grow" style={{ paddingBottom: 2 }}>
             <div className="ellip" style={{ fontWeight: 600, fontSize: 12.5 }}>{next.title}</div>
-            <div className="ellip dim" style={{ fontSize: 11 }}>{uniName(s, next.universityId) ?? az(next.kind)} · {fmtShort(next.dueDate)}</div>
+            <div className="ellip dim" style={{ fontSize: 11 }}>{uniName(s, next.universityId) ?? statusLabel(next.kind)} · {fmtShort(next.dueDate)}</div>
           </div>
         </div>
       ) : (
-        <div className="empty">Açıq deadline yoxdur.</div>
+        <div className="empty">No open deadlines.</div>
       )}
-      <div className="section-label">Növbəti</div>
+      <div className="section-label">Next</div>
       <div className="list">
         {open.slice(1).map((d) => {
           const k = daysUntil(d.dueDate)
@@ -100,7 +100,7 @@ export function DeadlinesSummary({ s }: P) {
               {d.verified ? (
                 <ShieldCheck size={13} color="var(--green)" />
               ) : (
-                <span title="Mənbədən təsdiqlənməyib"><ShieldAlert size={13} color="var(--amber)" /></span>
+                <span title="Not verified from a source"><ShieldAlert size={13} color="var(--amber)" /></span>
               )}
             </div>
           )
@@ -115,21 +115,21 @@ export function UniversitiesSummary({ s }: P) {
   return (
     <>
       <div className="kpis">
-        <div className="kpi"><div className="n">{s.universities.length}</div><div className="l">Seçilmiş</div></div>
-        <div className="kpi"><div className="n">{by(['applying'])}</div><div className="l">Müraciət</div></div>
-        <div className="kpi"><div className="n">{by(['applied', 'interview', 'accepted'])}</div><div className="l">Göndərildi</div></div>
+        <div className="kpi"><div className="n">{s.universities.length}</div><div className="l">Selected</div></div>
+        <div className="kpi"><div className="n">{by(['applying'])}</div><div className="l">Applying</div></div>
+        <div className="kpi"><div className="n">{by(['applied', 'interview', 'accepted'])}</div><div className="l">Applied</div></div>
       </div>
       <div className="list">
-        {s.universities.length === 0 && <div className="empty">Hədəf universitetləri əlavə et və ya Talvis-ə yaz.</div>}
+        {s.universities.length === 0 && <div className="empty">Add target universities or tell Talvis.</div>}
         {[...s.universities].sort(byAdmitChance).map((u) => (
           <div key={u.id} className="item">
             <span className="flag">{u.countryCode}</span>
             <span className="t" title={u.rankLabel}>{u.name}</span>
             {u.admitChance !== undefined ? <AdmitBar chance={u.admitChance} compact /> : u.rank !== undefined && <span className="m" title={u.rankLabel}>#{u.rank}</span>}
-            {u.langCert === 'not_required' && <span title="Dil sertifikatı tələb olunmur"><Languages size={11} color="var(--green)" /></span>}
-            {u.langCert === 'waiver' && <span title="Dil sertifikatından azadlıq mümkündür"><Languages size={11} color="var(--amber)" /></span>}
+            {u.langCert === 'not_required' && <span title="Language certificate not required"><Languages size={11} color="var(--green)" /></span>}
+            {u.langCert === 'waiver' && <span title="Language certificate waiver possible"><Languages size={11} color="var(--amber)" /></span>}
             <span className="m row" style={{ gap: 3 }}>{s.researchers.filter((r) => r.universityId === u.id).length}<UsersRound size={10} /></span>
-            <span className={`chip ${u.status === 'applying' ? 'amber' : u.status === 'accepted' ? 'green' : 'cyan'}`}>{az(u.status)}</span>
+            <span className={`chip ${u.status === 'applying' ? 'amber' : u.status === 'accepted' ? 'green' : 'cyan'}`}>{statusLabel(u.status)}</span>
           </div>
         ))}
       </div>
@@ -140,7 +140,7 @@ export function UniversitiesSummary({ s }: P) {
 export function TopicsSummary({ s }: P) {
   return (
     <div className="list" style={{ gap: 7 }}>
-      {s.topics.length === 0 && <div className="empty">Araşdırdığın mövzuları əlavə et - bütün axtarışlar bunlara əsaslanır.</div>}
+      {s.topics.length === 0 && <div className="empty">Add the topics you are researching - all searches are based on them.</div>}
       {s.topics.map((t) => {
         const papers = s.papers.filter((p) => p.topicIds.includes(t.id)).length
         const gaps = s.gaps.filter((g) => g.topicId === t.id).length
@@ -167,7 +167,7 @@ export function TopicsSummary({ s }: P) {
 export function GroupsSummary({ s }: P) {
   return (
     <div className="list">
-      {s.groups.length === 0 && <div className="empty">Universitetlərdə "Kəşf et" laboratoriyaları tapır.</div>}
+      {s.groups.length === 0 && <div className="empty">Scout on a university finds labs.</div>}
       {s.groups.map((g) => (
         <div key={g.id} className="item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
           <span className="t" style={{ fontWeight: 600 }}>{g.name}</span>
@@ -182,14 +182,14 @@ export function ResearchersSummary({ s }: P) {
   const list = [...s.researchers].sort((a, b) => (b.relevance ?? 0) - (a.relevance ?? 0))
   return (
     <div className="list">
-      {list.length === 0 && <div className="empty">Seçdiyin universitetlərdə mövzunu kimin araşdırdığı burada görünəcək.</div>}
+      {list.length === 0 && <div className="empty">Who works on your topics at your chosen universities will appear here.</div>}
       {list.map((r) => (
         <div key={r.id} className="item">
           <span className="avatar">{initials(r.name)}</span>
           <div className="grow">
             <div className="row" style={{ gap: 6 }}>
               <span className="ellip" style={{ fontSize: 12, fontWeight: 600 }}>{r.name}</span>
-              {r.status !== 'new' && <span className="chip amber">{az(r.status)}</span>}
+              {r.status !== 'new' && <span className="chip amber">{statusLabel(r.status)}</span>}
             </div>
             <div className="row" style={{ gap: 6, marginTop: 3 }}>
               <span className="mono faint" style={{ fontSize: 9.5 }}>h{r.hIndex ?? '-'}</span>
@@ -208,12 +208,12 @@ export function PapersSummary({ s }: P) {
   return (
     <>
       <div className="kpis">
-        <div className="kpi"><div className="n">{c('to_read')}</div><div className="l">Oxunacaq</div></div>
-        <div className="kpi"><div className="n">{c('reading')}</div><div className="l">Oxunur</div></div>
-        <div className="kpi"><div className="n">{c('read') + c('key')}</div><div className="l">Oxundu</div></div>
+        <div className="kpi"><div className="n">{c('to_read')}</div><div className="l">To read</div></div>
+        <div className="kpi"><div className="n">{c('reading')}</div><div className="l">Reading</div></div>
+        <div className="kpi"><div className="n">{c('read') + c('key')}</div><div className="l">Read</div></div>
       </div>
       <div className="list">
-        {s.papers.length === 0 && <div className="empty">Kitabxana boşdur. OpenAlex / Semantic Scholar / arXiv-dən real məqalə axtar.</div>}
+        {s.papers.length === 0 && <div className="empty">The library is empty. Search real papers from OpenAlex / Semantic Scholar / arXiv.</div>}
         {[...s.papers].reverse().map((p) => (
           <div key={p.id} className="item">
             <span className={`chip ${p.status === 'key' ? 'green' : p.status === 'reading' ? 'amber' : ''}`}>{p.year ?? '-'}</span>
@@ -237,7 +237,7 @@ function Dots({ n }: { n: number }) {
 export function GapsSummary({ s }: P) {
   return (
     <div className="list" style={{ gap: 6 }}>
-      {s.gaps.length === 0 && <div className="empty">Mövzu seç və real gap analizi başlat - sübutlu boşluqlar burada görünəcək.</div>}
+      {s.gaps.length === 0 && <div className="empty">Pick a topic and run a live gap analysis - evidence-backed gaps will appear here.</div>}
       {s.gaps.filter((g) => g.status !== 'discarded').map((g) => (
         <div key={g.id} className="item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 5 }}>
           <div className="row" style={{ alignItems: 'flex-start' }}>
@@ -245,10 +245,10 @@ export function GapsSummary({ s }: P) {
             <span style={{ fontSize: 12, lineHeight: 1.35, flex: 1 }}>{g.title}</span>
           </div>
           <div className="row" style={{ gap: 10 }}>
-            <span className="mono faint" style={{ fontSize: 9 }}>YENİLİK</span><Dots n={g.novelty} />
-            <span className="mono faint" style={{ fontSize: 9 }}>İCRA</span><Dots n={g.feasibility} />
+            <span className="mono faint" style={{ fontSize: 9 }}>NOVELTY</span><Dots n={g.novelty} />
+            <span className="mono faint" style={{ fontSize: 9 }}>FEASIBILITY</span><Dots n={g.feasibility} />
             <span className="grow" />
-            <span className={`chip ${g.status === 'shortlisted' || g.status === 'selected' ? 'violet' : ''}`}>{az(g.status)}</span>
+            <span className={`chip ${g.status === 'shortlisted' || g.status === 'selected' ? 'violet' : ''}`}>{statusLabel(g.status)}</span>
           </div>
         </div>
       ))}
@@ -260,7 +260,7 @@ export function PublishSummary({ s }: P) {
   const list = [...s.venues].sort((a, b) => (b.fit ?? 0) - (a.fit ?? 0))
   return (
     <div className="list">
-      {list.length === 0 && <div className="empty">Məqaləni hara göndərə biləcəyin: real jurnal və konfranslar, h-index və OA/APC ilə.</div>}
+      {list.length === 0 && <div className="empty">Where you can submit your paper: real journals and conferences, with h-index and OA/APC.</div>}
       {list.map((v) => (
         <div key={v.id} className="item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
           <div className="row">
@@ -268,7 +268,7 @@ export function PublishSummary({ s }: P) {
             {v.isOa && <span className="chip green">OA</span>}
           </div>
           <div className="row" style={{ gap: 6 }}>
-            <span className="mono faint" style={{ fontSize: 9.5 }}>{v.type === 'journal' ? 'JURNAL' : 'KONF.'}{v.hIndex ? ` · h${v.hIndex}` : ''}</span>
+            <span className="mono faint" style={{ fontSize: 9.5 }}>{v.type === 'journal' ? 'JOURNAL' : 'CONF.'}{v.hIndex ? ` · h${v.hIndex}` : ''}</span>
             <div className="bar grow"><i style={{ width: `${v.fit ?? 0}%` }} /></div>
             <span className="mono" style={{ fontSize: 9.5, color: 'var(--accent)' }}>{v.fit ?? 0}%</span>
           </div>
@@ -285,14 +285,14 @@ const DOC_ICON: Record<Doc['kind'], typeof FileText> = {
 export function DocumentsSummary({ s }: P) {
   return (
     <div className="list">
-      {s.docs.length === 0 && <div className="empty">SOP, research proposal, CV, professorlara email-lər.</div>}
+      {s.docs.length === 0 && <div className="empty">SOP, research proposal, CV, emails to professors.</div>}
       {s.docs.map((d) => {
         const I = DOC_ICON[d.kind]
         return (
           <div key={d.id} className="item">
             <I size={13} color="var(--accent)" />
             <span className="t">{d.title}</span>
-            <span className={`chip ${d.status === 'final' ? 'green' : d.status === 'review' ? 'amber' : ''}`}>{az(d.status)}</span>
+            <span className={`chip ${d.status === 'final' ? 'green' : d.status === 'review' ? 'amber' : ''}`}>{statusLabel(d.status)}</span>
           </div>
         )
       })}
@@ -303,7 +303,7 @@ export function DocumentsSummary({ s }: P) {
 function ProfRow({ k, children }: { k: string; children: React.ReactNode }) {
   return (
     <div className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
-      <span className="mono faint" style={{ fontSize: 9, width: 56, flex: 'none', paddingTop: 3, letterSpacing: '0.12em' }}>{k}</span>
+      <span className="mono faint" style={{ fontSize: 9, width: 72, flex: 'none', paddingTop: 3, letterSpacing: '0.12em' }}>{k}</span>
       <div className="row grow" style={{ gap: 4, flexWrap: 'wrap' }}>{children}</div>
     </div>
   )
@@ -312,7 +312,7 @@ function ProfRow({ k, children }: { k: string; children: React.ReactNode }) {
 export function ProfileSummary({ s }: P) {
   const p = s.profile
   if (!p.name && !p.field && !p.directions.length && !p.countries.length)
-    return <div className="empty">Profil boşdur. İstiqamətlərini, hədəf ölkələri, reytinqi və şərtləri (məs. dil sertifikatı tələb etməyən) seç - universitet axtarışı buna görə gedir.</div>
+    return <div className="empty">Profile is empty. Choose your directions, target countries, ranking and conditions (e.g. no language certificate required) - the university search is based on them.</div>
   return (
     <>
       {(p.name || p.stage) && (
@@ -324,10 +324,10 @@ export function ProfileSummary({ s }: P) {
           </div>
         </div>
       )}
-      <ProfRow k="İSTİQAMƏT">{p.directions.length ? p.directions.map((d) => <span key={d} className="chip cyan solid">{d}</span>) : <span className="faint">-</span>}</ProfRow>
-      <ProfRow k="ÖLKƏ">{p.countries.length ? p.countries.map((c) => <span key={c} className="chip cyan">{c}</span>) : <span className="faint">istənilən</span>}</ProfRow>
-      <ProfRow k="REYTİNQ"><span className="chip">{rankingLabel(p.rankingSystem, p.rankingMax)}</span></ProfRow>
-      <ProfRow k="ŞƏRTLƏR">
+      <ProfRow k="DIRECTION">{p.directions.length ? p.directions.map((d) => <span key={d} className="chip cyan solid">{d}</span>) : <span className="faint">-</span>}</ProfRow>
+      <ProfRow k="COUNTRY">{p.countries.length ? p.countries.map((c) => <span key={c} className="chip cyan">{c}</span>) : <span className="faint">any</span>}</ProfRow>
+      <ProfRow k="RANKING"><span className="chip">{rankingLabel(p.rankingSystem, p.rankingMax)}</span></ProfRow>
+      <ProfRow k="CONDITIONS">
         {p.conditions.length ? p.conditions.map((k) => <span key={k} className="chip green" title={CONDITION_BY_KEY[k]?.label}>{CONDITION_BY_KEY[k]?.short ?? k}</span>) : <span className="faint">-</span>}
       </ProfRow>
     </>
@@ -341,12 +341,12 @@ export function PositionsSummary({ s }: P) {
   return (
     <>
       <div className="kpis">
-        <div className="kpi"><div className="n">{open.length}</div><div className="l">Elan</div></div>
-        <div className="kpi"><div className="n">{open.filter((p) => p.status === 'shortlisted' || p.status === 'applying').length}</div><div className="l">Seçilmiş</div></div>
-        <div className="kpi"><div className="n">{soon}</div><div className="l">30 gündə</div></div>
+        <div className="kpi"><div className="n">{open.length}</div><div className="l">Positions</div></div>
+        <div className="kpi"><div className="n">{open.filter((p) => p.status === 'shortlisted' || p.status === 'applying').length}</div><div className="l">Shortlisted</div></div>
+        <div className="kpi"><div className="n">{soon}</div><div className="l">Within 30 days</div></div>
       </div>
       <div className="list">
-        {open.length === 0 && <div className="empty">Portallardan (DAAD, jobs.ac.uk, EURAXESS, PhDPortal...) profilinə uyğun PhD elanlarını Talvis tapsın.</div>}
+        {open.length === 0 && <div className="empty">Let Talvis find PhD positions matching your profile from portals (DAAD, jobs.ac.uk, EURAXESS, PhDPortal...).</div>}
         {[...open].sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999')).map((p) => (
           <div key={p.id} className="item">
             <span className="t" title={p.title}>{p.title}</span>
@@ -355,7 +355,7 @@ export function PositionsSummary({ s }: P) {
           </div>
         ))}
       </div>
-      {portals > 0 && <div className="faint" style={{ fontSize: 10.5, marginTop: 4 }}>{portals} portaldan</div>}
+      {portals > 0 && <div className="faint" style={{ fontSize: 10.5, marginTop: 4 }}>from {portals} portals</div>}
     </>
   )
 }
@@ -363,11 +363,11 @@ export function PositionsSummary({ s }: P) {
 export function InsightsSummary({ s }: P) {
   return (
     <div className="list">
-      {s.insights.length === 0 && <div className="empty">Universitet seç: Talvis Reddit-də orada oxuyanların nə dediyini (rəhbərlik, təqaüd, iş yükü) sübutlarla analiz etsin.</div>}
+      {s.insights.length === 0 && <div className="empty">Pick a university: Talvis analyses what students there say on Reddit (supervision, stipend, workload), with evidence.</div>}
       {s.insights.map((i) => (
         <div key={i.id} className="item">
           <span className="t">{uniName(s, i.universityId) ?? i.subject}</span>
-          <span className="m">{i.postsAnalyzed} post</span>
+          <span className="m">{i.postsAnalyzed} posts</span>
           <span className={`chip ${i.sentiment > 0 ? 'green' : i.sentiment < 0 ? 'red' : 'amber'}`}>{i.sentiment > 0 ? '+' : ''}{i.sentiment}</span>
         </div>
       ))}
@@ -379,7 +379,7 @@ export function DirectionsSummary({ s }: P) {
   const counts = directionCounts(s)
   return (
     <div className="list">
-      {s.directions.length === 0 && <div className="empty">NLP, Adaptive learning kimi əsas istiqamətləri əlavə et: Talvis hansının sənə daha uyğun olduğunu sübutla müqayisə etsin.</div>}
+      {s.directions.length === 0 && <div className="empty">Add your main directions (e.g. NLP, HCI, adaptive learning): Talvis compares which fits you best, with evidence.</div>}
       {s.directions.map((d) => {
         const score = overallScore(d.analysis?.scores, d.interest)
         const c = counts[d.id]
@@ -388,8 +388,8 @@ export function DirectionsSummary({ s }: P) {
             <div className="row">
               <span style={{ width: 8, height: 8, borderRadius: 4, background: d.color, flexShrink: 0 }} />
               <span className="t" style={{ fontWeight: 600 }}>{d.name}</span>
-              <span className="m">{c ? `${c.papers} məq · ${c.researchers} təd · ${c.positions} elan` : ''}</span>
-              <span className="chip" style={{ color: d.color, borderColor: d.color }}>{score !== undefined ? `${score}/10` : 'analiz yox'}</span>
+              <span className="m">{c ? `${c.papers} papers · ${c.researchers} res. · ${c.positions} pos.` : ''}</span>
+              <span className="chip" style={{ color: d.color, borderColor: d.color }}>{score !== undefined ? `${score}/10` : 'no analysis'}</span>
             </div>
             {score !== undefined && (
               <span className="scorebar" style={{ '--dc': d.color } as React.CSSProperties}><i style={{ width: `${score * 10}%` }} /></span>

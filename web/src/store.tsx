@@ -248,7 +248,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (kind: string, params: Record<string, unknown> = {}) => {
       try {
         await api('/jobs', { body: { kind, ...params } })
-        toast('Arxa plan işi başladı - nəticə kartda və çatda görünəcək')
+        toast('Background job started - the result will appear on the card and in the chat')
       } catch (e) {
         toast((e as Error).message)
       }

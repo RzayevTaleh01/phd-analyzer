@@ -1,5 +1,5 @@
-const MONTHS = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'İyn', 'İyl', 'Avq', 'Sen', 'Okt', 'Noy', 'Dek']
-const WEEKDAYS = ['Bazar', 'Bazar ertəsi', 'Çərşənbə axşamı', 'Çərşənbə', 'Cümə axşamı', 'Cümə', 'Şənbə']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export function todayISO(d = new Date()): string {
   const y = d.getFullYear()
@@ -53,10 +53,10 @@ export function initials(name: string): string {
 }
 
 export function dayLabel(n: number): string {
-  if (n < 0) return `${-n}g keçib`
-  if (n === 0) return 'bu gün'
-  if (n === 1) return 'sabah'
-  return `${n} gün`
+  if (n < 0) return `${-n}d ago`
+  if (n === 0) return 'today'
+  if (n === 1) return 'tomorrow'
+  return `${n} days`
 }
 
 export function urgency(n: number): 'red' | 'amber' | 'cyan' {
@@ -65,48 +65,48 @@ export function urgency(n: number): 'red' | 'amber' | 'cyan' {
   return 'cyan'
 }
 
-export const STATUS_AZ: Record<string, string> = {
-  interested: 'Maraqlı',
-  researching: 'Araşdırılır',
-  applying: 'Müraciət',
-  applied: 'Göndərildi',
-  interview: 'Müsahibə',
-  accepted: 'Qəbul',
-  rejected: 'Rədd',
-  new: 'Yeni',
-  to_contact: 'Yazılacaq',
-  contacted: 'Yazıldı',
-  replied: 'Cavab verdi',
-  meeting: 'Görüş',
-  declined: 'İmtina',
-  to_read: 'Oxunacaq',
-  reading: 'Oxunur',
-  read: 'Oxundu',
-  key: 'Əsas',
-  candidate: 'Namizəd',
-  shortlisted: 'Seçilmiş',
-  found: 'Tapıldı',
-  dismissed: 'Atıldı',
-  selected: 'Mövzum',
-  discarded: 'Atıldı',
-  suggested: 'Təklif',
-  submitted: 'Göndərildi',
-  draft: 'Qaralama',
-  review: 'Yoxlanış',
-  final: 'Hazır',
-  todo: 'Ediləcək',
-  doing: 'Gedir',
-  done: 'Bitdi',
-  open: 'Açıq',
-  missed: 'Buraxıldı',
-  application: 'Müraciət',
-  scholarship: 'Təqaüd',
-  document: 'Sənəd',
-  conference: 'Konfrans',
-  journal: 'Jurnal',
-  other: 'Digər',
+export const STATUS_LABEL: Record<string, string> = {
+  interested: 'Interested',
+  researching: 'Researching',
+  applying: 'Applying',
+  applied: 'Applied',
+  interview: 'Interview',
+  accepted: 'Accepted',
+  rejected: 'Rejected',
+  new: 'New',
+  to_contact: 'To contact',
+  contacted: 'Contacted',
+  replied: 'Replied',
+  meeting: 'Meeting',
+  declined: 'Declined',
+  to_read: 'To read',
+  reading: 'Reading',
+  read: 'Read',
+  key: 'Key',
+  candidate: 'Candidate',
+  shortlisted: 'Shortlisted',
+  found: 'Found',
+  dismissed: 'Dismissed',
+  selected: 'Selected',
+  discarded: 'Discarded',
+  suggested: 'Suggested',
+  submitted: 'Submitted',
+  draft: 'Draft',
+  review: 'Review',
+  final: 'Final',
+  todo: 'To do',
+  doing: 'Doing',
+  done: 'Done',
+  open: 'Open',
+  missed: 'Missed',
+  application: 'Application',
+  scholarship: 'Scholarship',
+  document: 'Document',
+  conference: 'Conference',
+  journal: 'Journal',
+  other: 'Other',
 }
 
-export function az(key?: string): string {
-  return key ? STATUS_AZ[key] ?? key : '-'
+export function statusLabel(key?: string): string {
+  return key ? STATUS_LABEL[key] ?? key : '-'
 }

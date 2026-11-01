@@ -11,14 +11,14 @@ import { useStore } from '../store'
 type Kind = 'me' | 'topic' | 'university' | 'group' | 'researcher' | 'paper' | 'gap' | 'venue' | 'deadline'
 
 const KIND: Record<Kind, { r: number; color: string; icon: LucideIcon; module: ModuleKey; label: string }> = {
-  me: { r: 34, color: '#c9f6ff', icon: Fingerprint, module: 'profile', label: 'Sən' },
-  topic: { r: 26, color: '#2fd8ff', icon: Lightbulb, module: 'topics', label: 'Mövzu' },
-  university: { r: 24, color: '#5aa9ff', icon: Landmark, module: 'universities', label: 'Universitet' },
-  group: { r: 16, color: '#7fd0ff', icon: Network, module: 'groups', label: 'Qrup' },
-  researcher: { r: 15, color: '#93ecff', icon: UserRound, module: 'researchers', label: 'Tədqiqatçı' },
-  paper: { r: 10, color: '#6f93a8', icon: Library, module: 'papers', label: 'Məqalə' },
+  me: { r: 34, color: '#c9f6ff', icon: Fingerprint, module: 'profile', label: 'You' },
+  topic: { r: 26, color: '#2fd8ff', icon: Lightbulb, module: 'topics', label: 'Topic' },
+  university: { r: 24, color: '#5aa9ff', icon: Landmark, module: 'universities', label: 'University' },
+  group: { r: 16, color: '#7fd0ff', icon: Network, module: 'groups', label: 'Group' },
+  researcher: { r: 15, color: '#93ecff', icon: UserRound, module: 'researchers', label: 'Researcher' },
+  paper: { r: 10, color: '#6f93a8', icon: Library, module: 'papers', label: 'Paper' },
   gap: { r: 15, color: '#a594ff', icon: Radar, module: 'gaps', label: 'Gap' },
-  venue: { r: 13, color: '#45f0a4', icon: Rocket, module: 'publish', label: 'Jurnal' },
+  venue: { r: 13, color: '#45f0a4', icon: Rocket, module: 'publish', label: 'Journal' },
   deadline: { r: 11, color: '#ffb547', icon: CalendarClock, module: 'deadlines', label: 'Deadline' },
 }
 
@@ -36,7 +36,7 @@ function savedShown(): Kind[] {
 interface GNode extends SimulationNodeDatum { id: string; kind: Kind; label: string }
 
 function buildGraph(s: AppState) {
-  const nodes: GNode[] = [{ id: 'me', kind: 'me', label: s.profile.name || 'Sən' }]
+  const nodes: GNode[] = [{ id: 'me', kind: 'me', label: s.profile.name || 'You' }]
   const links: { source: string; target: string }[] = []
   const add = (id: string, kind: Kind, label: string) => nodes.push({ id, kind, label })
   const link = (a: string, b: string) => links.push({ source: a, target: b })
@@ -189,7 +189,7 @@ function Legend({ shown, counts, onToggle, onShowAll }: {
   return (
     <div className="graph-legend">
       <button className="legend-toggle" onClick={() => setOpen(!open)}>
-        {open ? 'Legendanı gizlət' : shown.length ? `Legenda · ${shown.length} seçili` : 'Legenda'}
+        {open ? 'Hide legend' : shown.length ? `Legend · ${shown.length} selected` : 'Legend'}
       </button>
       {open && (
         <>
@@ -200,7 +200,7 @@ function Legend({ shown, counts, onToggle, onShowAll }: {
             const on = shown.includes(k)
             const off = shown.length > 0 && !on
             return (
-              <button key={k} className={`legend-item${on ? ' on' : ''}${off ? ' off' : ''}`} onClick={() => onToggle(k)} title={on ? 'Seçimdən çıxar' : 'Yalnız seçilənləri göstər'}>
+              <button key={k} className={`legend-item${on ? ' on' : ''}${off ? ' off' : ''}`} onClick={() => onToggle(k)} title={on ? 'Remove from selection' : 'Show selected only'}>
                 <span className="sw" style={{ borderColor: KIND[k].color }} />
                 <span className="legend-name">{KIND[k].label}</span>
                 <span className="legend-count">{counts[k] ?? 0}</span>
@@ -208,8 +208,8 @@ function Legend({ shown, counts, onToggle, onShowAll }: {
               </button>
             )
           })}
-          {shown.length > 0 && <button className="legend-toggle" onClick={onShowAll}>Hamısını göstər</button>}
-          <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>Klik: yalnız seçilənlər · 2x klik düyündə: modulu aç</div>
+          {shown.length > 0 && <button className="legend-toggle" onClick={onShowAll}>Show all</button>}
+          <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>Click: show selected only · Double-click a node: open its module</div>
         </>
       )}
     </div>

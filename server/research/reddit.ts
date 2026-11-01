@@ -84,7 +84,7 @@ async function apiToken(): Promise<string | undefined> {
     body: 'grant_type=client_credentials',
     signal: AbortSignal.timeout(20_000),
   })
-  if (!res.ok) throw new HttpError(res.status, `Reddit OAuth ${res.status}: client id / secret yoxla (reddit.com/prefs/apps)`)
+  if (!res.ok) throw new HttpError(res.status, `Reddit OAuth ${res.status}: check the client id / secret (reddit.com/prefs/apps)`)
   const j = (await res.json()) as { access_token: string; expires_in: number }
   token = { value: j.access_token, until: Date.now() + j.expires_in * 1000 }
   return token.value
@@ -123,7 +123,7 @@ interface AtomEntry {
 async function rss(path: string): Promise<AtomEntry[]> {
   const body = await fetchData<string>(`https://www.reddit.com${path}`, { as: 'text', cacheMs: 12 * 3600_000, headers: { 'User-Agent': UA }, retries: 2 }).catch((e: Error) => {
     if (e instanceof HttpError && (e.status === 429 || e.status === 403))
-      throw new HttpError(e.status, `Reddit sorğunu məhdudlaşdırdı (${e.status}). Bir az sonra yenidən yoxla, ya da Ayarlarda Reddit app açarlarını yaz (daha çox limit).`)
+      throw new HttpError(e.status, `Reddit limited the request (${e.status}). Try again in a little while, or enter Reddit app keys in Settings (higher limit).`)
     throw e
   })
   const doc = xml.parse(body) as { feed?: { entry?: AtomEntry | AtomEntry[] } }

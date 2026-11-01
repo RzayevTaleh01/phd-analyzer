@@ -56,7 +56,7 @@ let accounts: Account[] = kvGet<{ list: Account[] }>('accounts', { list: [] }).l
   configDir: a.configDir ? path.join(ACCOUNTS_DIR, a.configDir.split(/[\\/]/).filter(Boolean).pop()!) : null,
   state: 'checking' as const,
 }))
-if (!accounts.some((a) => a.id === 'main')) accounts.unshift({ id: 'main', label: 'Hesab 1', configDir: null, state: 'checking' })
+if (!accounts.some((a) => a.id === 'main')) accounts.unshift({ id: 'main', label: 'Account 1', configDir: null, state: 'checking' })
 let activeId: string = kvGet<{ id: string }>('accounts_active', { id: 'main' }).id
 if (!accounts.some((a) => a.id === activeId)) activeId = 'main'
 
@@ -103,7 +103,7 @@ export function addAccount(label?: string): Account {
   const id = `acc-${n}`
   const configDir = path.join(ACCOUNTS_DIR, id)
   fs.mkdirSync(configDir, { recursive: true })
-  const acc: Account = { id, label: label?.trim() || `Hesab ${n}`, configDir, state: 'login_required' }
+  const acc: Account = { id, label: label?.trim() || `Account ${n}`, configDir, state: 'login_required' }
   accounts.push(acc)
   persist()
   return acc
@@ -129,7 +129,7 @@ export function setActive(id: string, reason?: string) {
   const from = activeAccount()
   activeId = id
   persist()
-  logActivity('system', 'core', reason ?? `Aktiv Claude hesabı: ${from.label} → ${activeAccount().label}`)
+  logActivity('system', 'core', reason ?? `Active Claude account: ${from.label} → ${activeAccount().label}`)
 }
 
 // ---------- status ----------
@@ -219,7 +219,7 @@ export function markLimited(id: string, resetsAt?: number, type?: string) {
   const until = resetsAt ? toMs(resetsAt) : Date.now() + 60 * 60_000
   patch(id, { limitedUntil: until, limitType: type })
   const acc = getAccount(id)
-  logActivity('system', 'core', `${acc?.label ?? id}: Claude limiti bitdi (${new Date(until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}-dək)`)
+  logActivity('system', 'core', `${acc?.label ?? id}: Claude limit reached (until ${new Date(until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })})`)
 }
 
 /** The account to use now: the active one if ready, else (auto-switch) the next ready one. */
@@ -233,7 +233,7 @@ export async function pickAccount(exclude: Set<string> = new Set()): Promise<Acc
     if (other.state === 'checking') await checkAccount(other.id)
     const fresh = getAccount(other.id)!
     if (isReady(fresh)) {
-      setActive(fresh.id, `Claude hesabı dəyişdi: ${a.label} → ${fresh.label}`)
+      setActive(fresh.id, `Claude account switched: ${a.label} → ${fresh.label}`)
       return fresh
     }
   }
@@ -242,5 +242,5 @@ export async function pickAccount(exclude: Set<string> = new Set()): Promise<Acc
 
 export function limitText(a: Account): string {
   const t = a.limitedUntil ? new Date(a.limitedUntil).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '?'
-  return `${a.label} hesabının Claude limiti bitib (${t}-dək).`
+  return `The Claude limit of ${a.label} is used up (until ${t}).`
 }

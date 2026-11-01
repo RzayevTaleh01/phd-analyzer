@@ -29,10 +29,10 @@ export function login(req: Request, res: Response) {
   if (!authRequired()) return res.json({ ok: true })
   const ip = req.ip ?? 'unknown'
   const t = tries.get(ip)
-  if (t && t.until > Date.now() && t.n >= 8) return res.status(429).json({ error: 'Çox cəhd oldu, 10 dəqiqə sonra yenidən yoxla' })
+  if (t && t.until > Date.now() && t.n >= 8) return res.status(429).json({ error: 'Too many attempts, try again in 10 minutes' })
   if (!same(String(req.body?.password ?? ''), process.env.APP_PASSWORD!)) {
     tries.set(ip, { n: (t && t.until > Date.now() ? t.n : 0) + 1, until: Date.now() + 10 * 60_000 })
-    return res.status(401).json({ error: 'Parol səhvdir' })
+    return res.status(401).json({ error: 'Wrong password' })
   }
   tries.delete(ip)
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https'

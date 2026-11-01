@@ -62,7 +62,7 @@ export async function fetchData<T = unknown>(url: string, opts: FetchOpts = {}):
         delay *= 2
         continue
       }
-      throw new HttpError(0, `${host}: şəbəkə xətası (${(e as Error).message})`)
+      throw new HttpError(0, `${host}: network error (${(e as Error).message})`)
     }
     if ((res.status === 429 || res.status >= 500) && attempt < retries) {
       // Reddit sends x-ratelimit-reset (seconds) instead of retry-after.

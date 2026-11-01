@@ -7,14 +7,14 @@ import { useStore } from '../store'
 import { DeleteBtn, Ext, Field, JobButton, JobLog, StatusSelect, TagInput } from './ui'
 
 const STATUS = ['exploring', 'leaning', 'chosen', 'dropped'] as const
-const STATUS_AZ: Record<Direction['status'], string> = { exploring: 'araşdırılır', leaning: 'meyilliyəm', chosen: 'seçildi', dropped: 'imtina' }
+const DIRECTION_STATUS_LABEL: Record<Direction['status'], string> = { exploring: 'Exploring', leaning: 'Leaning', chosen: 'Chosen', dropped: 'Dropped' }
 const COUNT_LABELS = [
-  ['topics', 'mövzu'],
-  ['papers', 'məqalə'],
-  ['researchers', 'tədqiqatçı'],
-  ['universities', 'universitet'],
-  ['positions', 'PhD elanı'],
-  ['gaps', 'gap'],
+  ['topics', 'topics'],
+  ['papers', 'papers'],
+  ['researchers', 'researchers'],
+  ['universities', 'universities'],
+  ['positions', 'PhD positions'],
+  ['gaps', 'gaps'],
 ] as const
 
 function ScoreBar({ v, color }: { v?: number; color: string }) {
@@ -29,7 +29,7 @@ function ScoreBar({ v, color }: { v?: number; color: string }) {
 
 function Interest({ d }: { d: Direction }) {
   return (
-    <span className="row" style={{ gap: 2 }} title="Bu istiqamətə öz marağın (1-5). Analizdə 15% çəkisi var.">
+    <span className="row" style={{ gap: 2 }} title="Your own interest in this direction (1-5). Weighted 15% in the analysis.">
       {[1, 2, 3, 4, 5].map((n) => (
         <button key={n} className="star-btn" onClick={() => items.patch<Direction>('directions', d.id, { interest: d.interest === n ? undefined : n } as Partial<Direction>)}>
           <Star size={14} fill={d.interest && n <= d.interest ? 'var(--amber)' : 'none'} color={d.interest && n <= d.interest ? 'var(--amber)' : 'var(--text-3)'} />
@@ -45,7 +45,7 @@ function Editor({ d, onDone }: { d?: Direction; onDone: () => void }) {
   const [description, setDescription] = useState(d?.description ?? '')
   const [keywords, setKeywords] = useState<string[]>(d?.keywords ?? [])
   const save = () => {
-    if (!name.trim()) return toast('Ad lazımdır')
+    if (!name.trim()) return toast('Name is required')
     const body = { name: name.trim(), description, keywords }
     const req = d
       ? items.patch<Direction>('directions', d.id, body)
@@ -55,15 +55,15 @@ function Editor({ d, onDone }: { d?: Direction; onDone: () => void }) {
   return (
     <div className="prof-block" style={{ marginBottom: 14 }}>
       <div className="grid2">
-        <Field label="Ad"><input className="input" value={name} placeholder="məs. Speech / Computer vision" onChange={(e) => setName(e.target.value)} /></Field>
-        <Field label="Təsvir"><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-        <Field label="Açar sözlər (board elementləri bunlara görə qruplaşır)" span={2}>
-          <TagInput value={keywords} onChange={setKeywords} placeholder="məs. NLP, low-resource, tokenizer" />
+        <Field label="Name"><input className="input" value={name} placeholder="e.g. Speech / Computer vision" onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Description"><input className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+        <Field label="Keywords (board items are grouped by these)" span={2}>
+          <TagInput value={keywords} onChange={setKeywords} placeholder="e.g. NLP, low-resource, tokenizer" />
         </Field>
       </div>
       <div className="row" style={{ gap: 6 }}>
-        <button className="btn primary" onClick={save}>Yadda saxla</button>
-        <button className="btn ghost" onClick={onDone}>Ləğv</button>
+        <button className="btn primary" onClick={save}>Save</button>
+        <button className="btn ghost" onClick={onDone}>Cancel</button>
       </div>
     </div>
   )
@@ -89,19 +89,20 @@ export default function DirectionsPanel() {
     <>
       <JobLog module="directions" />
       <div className="toolbar">
-        <JobButton kind="direction_fit" module="directions" label="AI: istiqamətləri araşdır və müqayisə et" disabled={!dirs.length} />
-        <button className="btn" onClick={() => setEditing('new')}><Plus size={13} /> Yeni istiqamət</button>
-        <span className="faint" style={{ fontSize: 12 }}>Talvis hər istiqamət üçün eyni dərinlikdə trend, məqalə, rəhbər və PhD elanı axtarır, board-u doldurur və 8 meyarla qiymətləndirir.</span>
+        <JobButton kind="setup_directions" module="directions" label="AI: group my interests" disabled={!fullState.profile.directions.length} />
+        <JobButton kind="direction_fit" module="directions" label="AI: research and compare directions" disabled={!dirs.length} />
+        <button className="btn" onClick={() => setEditing('new')}><Plus size={13} /> New direction</button>
+        <span className="faint" style={{ fontSize: 12 }}>Talvis researches trends, papers, supervisors and PhD positions for each direction at the same depth, fills the board and scores each direction on 8 criteria.</span>
       </div>
       {editing === 'new' && <Editor onDone={() => setEditing(null)} />}
       {dirs.some((d) => !d.interest) && (
         <div className="muted-box" style={{ marginBottom: 14, fontSize: 12 }}>
-          Hər istiqamət üçün öz marağını ulduzla qiymətləndir: AI bunu təxmin etmir, sənin qiymətin nəticəyə 15% təsir edir.
+          Rate your own interest in each direction with stars: the AI does not guess this, and your rating carries 15% of the result.
         </div>
       )}
       {best && analysed.length > 1 && (
         <div className="verdict" style={{ '--dc': best.d.color } as CSSProperties}>
-          İndiki sübutlara görə ən uyğun: <b>{best.d.name}</b> ({best.s}/10). Analiz tarixi: {best.d.analysis!.analyzedAt.slice(0, 10)}.
+          Best fit on current evidence: <b>{best.d.name}</b> ({best.s}/10). Analysis date: {best.d.analysis!.analyzedAt.slice(0, 10)}.
         </div>
       )}
 
@@ -115,7 +116,7 @@ export default function DirectionsPanel() {
                 <span className="dir-dot" />
                 <b style={{ fontSize: 15 }}>{d.name}</b>
                 <span className="grow" />
-                <button className="mod-btn" title="Redaktə" onClick={() => setEditing(editing === d.id ? null : d.id)}><Pencil size={12} /></button>
+                <button className="mod-btn" title="Edit" onClick={() => setEditing(editing === d.id ? null : d.id)}><Pencil size={12} /></button>
                 <DeleteBtn coll="directions" id={d.id} />
               </div>
               <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.45, margin: '6px 0 10px' }}>{d.description}</div>
@@ -123,7 +124,7 @@ export default function DirectionsPanel() {
               <div className="row" style={{ gap: 10, alignItems: 'flex-end' }}>
                 <div>
                   <div className="big-count" style={{ color: d.color }}>{score ?? '-'}</div>
-                  <div className="faint mono" style={{ fontSize: 10 }}>/10 uyğunluq</div>
+                  <div className="faint mono" style={{ fontSize: 10 }}>/10 fit</div>
                 </div>
                 <span className="grow" />
                 <div style={{ textAlign: 'right' }}>
@@ -139,10 +140,10 @@ export default function DirectionsPanel() {
                 ))}
               </div>
               <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
-                <button className="btn sm" onClick={() => { setDirection(d.id); setExpanded(null) }}><ArrowRight size={12} /> Board-u bu istiqamətə süz</button>
-                <JobButton kind="direction_fit" module="directions" params={{ directionId: d.id }} label="Yalnız bunu araşdır" />
+                <button className="btn sm" onClick={() => { setDirection(d.id); setExpanded(null) }}><ArrowRight size={12} /> Filter board to this direction</button>
+                <JobButton kind="direction_fit" module="directions" params={{ directionId: d.id }} label="Research only this one" />
               </div>
-              <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>Status: {STATUS_AZ[d.status]} · açar sözlər: {d.keywords.slice(0, 8).join(', ')}{d.keywords.length > 8 ? '...' : ''}</div>
+              <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>Status: {DIRECTION_STATUS_LABEL[d.status]} · keywords: {d.keywords.slice(0, 8).join(', ')}{d.keywords.length > 8 ? '...' : ''}</div>
             </div>
           )
         })}
@@ -150,12 +151,12 @@ export default function DirectionsPanel() {
 
       {dirs.length > 0 && (
         <>
-          <div className="section-label" style={{ margin: '20px 0 8px' }}>Meyarlar</div>
+          <div className="section-label" style={{ margin: '20px 0 8px' }}>Criteria</div>
           <table className="table">
             <thead>
               <tr>
-                <th>Meyar</th>
-                <th>Çəki</th>
+                <th>Criterion</th>
+                <th>Weight</th>
                 {dirs.map((d) => <th key={d.id} style={{ color: d.color }}>{d.name}</th>)}
               </tr>
             </thead>
@@ -166,7 +167,7 @@ export default function DirectionsPanel() {
                   <td className="mono">{Math.round(cr.weight * 100)}%</td>
                   {dirs.map((d) => {
                     const v = cr.key === 'interest' ? interestScore(d.interest) ?? d.analysis?.scores.interest?.score : d.analysis?.scores[cr.key]?.score
-                    const note = cr.key === 'interest' && d.interest ? `Sənin qiymətin: ${d.interest}/5` : d.analysis?.scores[cr.key]?.note
+                    const note = cr.key === 'interest' && d.interest ? `Your rating: ${d.interest}/5` : d.analysis?.scores[cr.key]?.note
                     return (
                       <td key={d.id} style={{ maxWidth: 280 }}>
                         <ScoreBar v={v} color={d.color} />
@@ -192,14 +193,14 @@ export default function DirectionsPanel() {
             </div>
             <p className="dim" style={{ fontSize: 12.5, lineHeight: 1.55 }}>{a.summary}</p>
             <div className="grid3" style={{ gap: 14 }}>
-              {([['Güclü tərəflər', a.strengths, 'green'], ['Risklər', a.risks, 'red'], ['Növbəti addımlar', a.nextSteps, 'cyan']] as const).map(([label, list, chip]) => (
+              {([['Strengths', a.strengths, 'green'], ['Risks', a.risks, 'red'], ['Next steps', a.nextSteps, 'cyan']] as const).map(([label, list, chip]) => (
                 <div key={label}>
                   <div className="section-label" style={{ marginBottom: 6 }}><span className={`chip ${chip}`}>{label}</span></div>
                   {list.map((x) => <div key={x} style={{ fontSize: 12, lineHeight: 1.45, marginBottom: 4 }}>- {x}</div>)}
                 </div>
               ))}
             </div>
-            <div className="section-label" style={{ margin: '10px 0 6px' }}>Sübutlar</div>
+            <div className="section-label" style={{ margin: '10px 0 6px' }}>Evidence</div>
             {a.evidence.map((e) => (
               <div key={e.ref + e.note} style={{ fontSize: 12, lineHeight: 1.45, marginBottom: 4 }}><EvidenceRef r={e.ref} /> {e.note}</div>
             ))}

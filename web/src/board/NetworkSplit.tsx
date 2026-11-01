@@ -52,7 +52,7 @@ export function DockSplit({ children, fixed = 'chat' }: { children: ReactNode; f
       <div className="net-graph" style={fixed === 'board' ? { width } : undefined}>{children}</div>
       <div
         className="net-splitter" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}
-        title={fixed === 'chat' ? 'Sürüşdür: çatın enini dəyiş' : 'Sürüşdür: kartların enini dəyiş'}
+        title={fixed === 'chat' ? 'Drag to resize the chat' : 'Drag to resize the cards'}
       />
       <aside className="net-chat" style={fixed === 'chat' ? { width } : undefined}>
         <ChatCore docked />

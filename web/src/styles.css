@@ -590,3 +590,45 @@ a:hover { text-decoration: underline; }
 /* ---------- login (deployed) ---------- */
 .auth-screen { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: var(--bg, #030b12); }
 .auth-box { width: min(340px, 100%); display: flex; flex-direction: column; align-items: center; padding: 28px 24px; border: 1px solid var(--line); border-radius: 4px; background: rgba(47, 216, 255, 0.03); }
+
+/* ---------- first run: research interests ---------- */
+.welcome-veil { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; overflow-y: auto; background: rgba(1, 4, 8, 0.78); backdrop-filter: blur(3px); animation: fade 0.2s ease-out; }
+.welcome {
+  --accent: var(--cyan);
+  position: relative; width: min(640px, 100%); padding: 26px 28px 24px;
+  display: flex; flex-direction: column; gap: 8px;
+  background: rgba(4, 13, 21, 0.98); border: 1px solid var(--line-2); border-radius: 3px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 50px rgba(47, 216, 255, 0.08);
+}
+.welcome-title { font-size: 20px; font-weight: 600; color: var(--text); margin-top: 6px; }
+.welcome-lead { font-size: 13px; line-height: 1.6; color: var(--text-2); margin: 6px 0 10px; }
+
+/* ---------- public user guide (/docs) ---------- */
+.docs-page { position: fixed; inset: 0; display: flex; overflow: hidden; }
+.docs-nav { flex: none; width: 260px; display: flex; flex-direction: column; gap: 18px; padding: 22px 18px; border-right: 1px solid var(--line); overflow-y: auto; }
+.docs-brand { gap: 10px; text-decoration: none; }
+.docs-nav nav { display: flex; flex-direction: column; gap: 2px; }
+.docs-nav nav a { font-size: 12.5px; color: var(--text-2); text-decoration: none; padding: 5px 8px; border-radius: 2px; }
+.docs-nav nav a:hover { color: var(--cyan-2); background: rgba(47, 216, 255, 0.06); }
+.docs-body { flex: 1; min-width: 0; overflow-y: auto; padding: 34px clamp(16px, 5vw, 64px) 80px; font-size: 14px; line-height: 1.7; color: var(--text); }
+.docs-body > * { max-width: 920px; }
+.docs-body h1 { font-size: 28px; margin: 0 0 12px; color: var(--cyan-2); }
+.docs-body h2 { font-size: 20px; margin: 40px 0 12px; padding-top: 10px; color: var(--cyan-2); scroll-margin-top: 16px; }
+.docs-body h3 { font-size: 15px; margin: 24px 0 8px; }
+.docs-body hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.docs-body a { color: var(--cyan-2); }
+.docs-body code { font-family: var(--mono); font-size: 12.5px; background: rgba(47, 216, 255, 0.08); padding: 1px 5px; border-radius: 2px; }
+.docs-body pre { background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 3px; padding: 12px 14px; overflow-x: auto; }
+.docs-body pre code { background: none; padding: 0; }
+.docs-body blockquote { margin: 12px 0; padding: 4px 14px; border-left: 2px solid var(--line-2); color: var(--text-2); }
+.docs-body table { border-collapse: collapse; width: 100%; margin: 12px 0 18px; font-size: 13px; display: block; overflow-x: auto; }
+.docs-body th { text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line-2); }
+.docs-body td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.docs-body strong { color: var(--cyan-2); font-weight: 600; }
+@media (max-width: 760px) {
+  .docs-page { flex-direction: column; overflow-y: auto; }
+  .docs-nav { width: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .docs-body { overflow: visible; }
+}
+.auth-docs { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; font-size: 12px; color: var(--text-2); text-decoration: none; }
+.auth-docs:hover { color: var(--cyan-2); }

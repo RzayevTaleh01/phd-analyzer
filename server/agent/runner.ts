@@ -10,7 +10,7 @@ import {
 } from './accounts'
 import { startLogin, type LoginState } from './login'
 import { buildOverview } from './overview'
-import { CORE_PROMPT, JOB_PROMPTS, type JobKind } from './prompts'
+import { CORE_PROMPT, JOB_PROMPTS, TRDESK_PROMPT, type JobKind } from './prompts'
 import { PHD_TOOL_NAMES, phdServer, setJobStarter, toolMeta } from './tools'
 
 export { claudeState }
@@ -27,15 +27,17 @@ function baseOptions(o: {
 }): Options {
   const s = getSettings()
   const fallback = s.model.includes('sonnet') ? 'claude-opus-5-5' : 'claude-sonnet-5-5'
-  const dynamic = `# BOARD SNAPSHOT\n${buildOverview()}${o.focus ? `\n\nFOCUS: ${o.focus}` : ''}${o.history ? `\n\n# CONVERSATION SO FAR (continue it naturally)\n${o.history}` : ''}`
+  // TRDesk is an optional integration: without a key Talvis neither sees its tools nor hears about it.
+  const trdeskOn = Boolean(s.trdeskKey)
+  const dynamic = `# BOARD SNAPSHOT\n${buildOverview()}${o.focus ? `\n\nFOCUS: ${o.focus}` : ''}${o.history ? `\n\n# CONVERSATION SO FAR (continue it naturally)\n${o.history}` : ''}\n\nBOARD LANGUAGE: ${s.language || 'English'}`
   return {
     model: s.model || undefined,
     fallbackModel: fallback,
     effort: o.effort,
-    systemPrompt: [CORE_PROMPT, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, dynamic],
+    systemPrompt: [trdeskOn ? `${CORE_PROMPT}\n\n${TRDESK_PROMPT}` : CORE_PROMPT, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, dynamic],
     tools: ['WebSearch', 'WebFetch'],
-    allowedTools: ['WebSearch', 'WebFetch', ...PHD_TOOL_NAMES],
-    mcpServers: { phd: phdServer() },
+    allowedTools: ['WebSearch', 'WebFetch', ...PHD_TOOL_NAMES.filter((n) => trdeskOn || !n.startsWith('mcp__phd__trdesk_'))],
+    mcpServers: { phd: phdServer(trdeskOn) },
     permissionMode: 'dontAsk',
     settingSources: [],
     strictMcpConfig: true,
@@ -119,10 +121,10 @@ async function consume(q: AsyncIterable<SDKMessage>, h: StreamHooks): Promise<{ 
 function friendlyError(e: string, account?: Account): string {
   if (AUTH_RE.test(e) && !LIMIT_RE.test(e)) {
     if (account) void checkAccount(account.id)
-    return `Claude-a giriş lazımdır${account ? ` (${account.label})` : ''}. **Claude-a qoşul** düyməsini bas: açılan linkdə hesabına daxil ol, göstərilən kodu bura yapışdır. Sonra yenidən yaz.`
+    return `Claude sign-in required${account ? ` (${account.label})` : ''}. Press **Connect to Claude**: sign in to your account in the link that opens and paste the code shown there here. Then write again.`
   }
-  if (/max_turns/.test(e)) return 'Addım limiti doldu, iş yarımçıq qaldı. Davam etməyimi istəsən "davam et" yaz.'
-  return `Xəta: ${e}`
+  if (/max_turns/.test(e)) return 'Step limit reached, the work was left unfinished. Write "continue" if you want me to carry on.'
+  return `Error: ${e}`
 }
 
 interface Attempt {
@@ -143,7 +145,7 @@ export async function withFailover(
   let prev: Account | undefined
   for (;;) {
     const account = await pickAccount(tried)
-    if (!account) return { text: '', error: prev ? limitText(getAccount(prev.id)!) + ' Başqa hazır hesab yoxdur.' : 'Claude hesabı yoxdur', limited: true, account: prev }
+    if (!account) return { text: '', error: prev ? limitText(getAccount(prev.id)!) + ' No other ready account.' : 'No Claude account', limited: true, account: prev }
     if (prev) onSwitch(prev, account)
     tried.add(account.id)
     let limited = false
@@ -161,7 +163,7 @@ export async function withFailover(
       markLimited(account.id)
     }
     if (!limited) return { ...res, limited: false, account }
-    if (!getSettings().autoSwitch) return { text: res.text, error: `${limitText(getAccount(account.id)!)} Profil → Claude hesablarında başqa hesaba keç və ya avtomatik keçidi aç.`, limited: true, account }
+    if (!getSettings().autoSwitch) return { text: res.text, error: `${limitText(getAccount(account.id)!)} Profile → Claude accounts: switch to another account or turn on automatic switching.`, limited: true, account }
     prev = account
   }
 }
@@ -223,12 +225,12 @@ export async function sendChat(text: string, directionId?: number): Promise<void
           },
         })
       },
-      (from, to) => say(`${reply.text ? '\n\n' : ''}> ${from.label} hesabının limiti bitdi, **${to.label}** hesabına keçdim.\n\n`),
+      (from, to) => say(`${reply.text ? '\n\n' : ''}> The limit of ${from.label} is used up, switched to **${to.label}**.\n\n`),
     )
     if (!reply.text.trim() && final) reply.text = final
-    if (error) say(`${reply.text ? '\n\n' : ''}${abort.signal.aborted ? 'Dayandırıldı.' : friendlyError(error, account)}`)
+    if (error) say(`${reply.text ? '\n\n' : ''}${abort.signal.aborted ? 'Stopped.' : friendlyError(error, account)}`)
   } catch (e) {
-    say(`${reply.text ? '\n\n' : ''}${abort.signal.aborted ? 'Dayandırıldı.' : friendlyError((e as Error).message)}`)
+    say(`${reply.text ? '\n\n' : ''}${abort.signal.aborted ? 'Stopped.' : friendlyError((e as Error).message)}`)
   } finally {
     chatAbort = null
     for (const t of reply.tools ?? []) if (t.status === 'running') t.status = 'done'
@@ -251,6 +253,7 @@ const JOB_MODULE: Record<JobKind, ModuleKey> = {
   portal_scan: 'positions',
   direction_fit: 'directions',
   admission_chance: 'universities',
+  setup_directions: 'directions',
 }
 
 export function listJobs(): Job[] {
@@ -272,13 +275,28 @@ export function stopJob(id: string) {
 async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promise<{ title: string; prompt: string }> {
   const note = p.note ? `User note: ${String(p.note)}` : ''
   switch (kind) {
+    case 'setup_directions': {
+      const prof = getProfile()
+      if (!prof.directions.length) throw new Error('Add at least one research interest in the Profile first (e.g. NLP, HCI)')
+      const profile = [
+        `Field: ${prof.field || '-'}; stage: ${prof.stage || '-'}; target intake: ${prof.targetTerm || '-'}`,
+        `More about their interests: ${prof.interests || '-'}`,
+        `Background: ${prof.background || '-'}`,
+        `Education: ${prof.education || '-'}; languages: ${prof.languages || '-'}; citizenship: ${prof.citizenship || '-'}`,
+        `Target countries: ${prof.countries.join(', ') || 'any'}`,
+      ].join('\n')
+      const existing = list('directions').map((d) => `[A${d.id}] ${d.name} (${d.status}): ${d.description} (keywords: ${d.keywords.join(', ')})`).join('\n')
+      return { title: 'Grouping your interests into directions', prompt: `${JOB_PROMPTS.setup_directions(prof.directions.join('; '), profile, existing)}\n${note}` }
+    }
     case 'find_universities': {
       const prof = getProfile()
+      const groups = list('directions').filter((d) => d.status !== 'dropped')
       const directions = prof.directions.length ? prof.directions : list('topics').filter((t) => t.status === 'active').map((t) => t.title)
-      if (!directions.length) throw new Error('Profildə ən az bir tədqiqat istiqaməti yaz (məs. NLP)')
+      if (!directions.length && !groups.length) throw new Error('Add at least one research interest in the Profile (e.g. NLP)')
       const conds = prof.conditions.map((k) => CONDITION_BY_KEY[k]).filter(Boolean)
       const criteria = [
-        `Research directions: ${directions.join('; ')}`,
+        `Research interests: ${directions.join('; ') || '-'}`,
+        groups.length ? `Direction groups: ${groups.map((d) => `[A${d.id}] ${d.name} (keywords: ${d.keywords.slice(0, 12).join(', ')})`).join('; ')}` : '',
         `Target countries: ${prof.countries.join(', ') || 'any (suggest a balanced set)'}`,
         `Ranking limit: ${prof.rankingMax ? `${prof.rankingSystem !== 'any' ? prof.rankingSystem : 'QS, THE or ARWU'} top ${prof.rankingMax}` : 'none'}`,
         `Hard conditions: ${conds.length ? conds.map((c) => `\n- [${c.key}] ${c.check}`).join('') : 'none'}`,
@@ -286,17 +304,17 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
         `Applicant: citizenship ${prof.citizenship || 'unknown'}; education ${prof.education || 'unknown'}; target intake ${prof.targetTerm || 'unknown'}`,
         note,
       ].filter(Boolean)
-      return { title: 'Kriteriyalara uyğun universitetlər', prompt: JOB_PROMPTS.find_universities(criteria.join('\n')) }
+      return { title: 'Universities matching your criteria', prompt: JOB_PROMPTS.find_universities(criteria.join('\n')) }
     }
     case 'gap_analysis': {
       const topics = list('topics')
       const t = (p.topicId ? get('topics', Number(p.topicId)) : undefined) ?? (topics.length === 1 ? topics[0] : undefined)
-      if (!t) throw new Error('Mövzu seçilməyib (topicId lazımdır)')
-      return { title: `Gap analizi: ${t.title}`, prompt: JOB_PROMPTS.gap_analysis(t.title, t.id, t.keywords.join(', '), `${t.description ?? ''} ${note}`) }
+      if (!t) throw new Error('No topic selected (topicId is required)')
+      return { title: `Research gap analysis: ${t.title}`, prompt: JOB_PROMPTS.gap_analysis(t.title, t.id, t.keywords.join(', '), `${t.description ?? ''} ${note}`) }
     }
     case 'scout_university': {
       const u = p.universityId ? get('universities', Number(p.universityId)) : undefined
-      if (!u) throw new Error('Universitet seçilməyib (universityId lazımdır)')
+      if (!u) throw new Error('No university selected (universityId is required)')
       let openalexId = u.openalexId
       if (!openalexId) {
         openalexId = (await oa.findInstitutions(u.name, 1).catch(() => []))[0]?.openalexId
@@ -305,35 +323,35 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
       const ids = (p.topicIds as number[] | undefined) ?? list('topics').filter((t) => t.status === 'active').map((t) => t.id)
       let topics = ids.map((id) => get('topics', id)).filter(Boolean).map((t) => `"${t!.title}" (T${t!.id}; keywords: ${t!.keywords.join(', ')})`)
       if (topics.length === 0) topics = getProfile().directions.map((d) => `"${d}" (research direction from the profile)`)
-      if (topics.length === 0) throw new Error('Əvvəl mövzu və ya profildə istiqamət əlavə et')
-      return { title: `Kəşf: ${u.name}`, prompt: `${JOB_PROMPTS.scout_university(u.name, u.id, openalexId ?? '', topics.join('; '))}\n${note}` }
+      if (topics.length === 0) throw new Error('First add a topic or a direction in the Profile')
+      return { title: `Scout: ${u.name}`, prompt: `${JOB_PROMPTS.scout_university(u.name, u.id, openalexId ?? '', topics.join('; '))}\n${note}` }
     }
     case 'verify_deadlines': {
       const u = p.universityId ? get('universities', Number(p.universityId)) : undefined
       const scope = u
         ? `for ${u.name} (U${u.id})`
         : `for all target universities: ${list('universities').map((x) => `${x.name} (U${x.id})`).join(', ') || '(none saved yet - say so and stop)'}`
-      return { title: u ? `Deadline yoxlanışı: ${u.name}` : 'Bütün deadline-ların yoxlanışı', prompt: `${JOB_PROMPTS.verify_deadlines(scope)}\n${note}` }
+      return { title: u ? `Deadline check: ${u.name}` : 'Check of all deadlines', prompt: `${JOB_PROMPTS.verify_deadlines(scope)}\n${note}` }
     }
     case 'daily_plan':
-      return { title: 'Bugünkü plan', prompt: `${JOB_PROMPTS.daily_plan()}\n${note}` }
+      return { title: "Today's plan", prompt: `${JOB_PROMPTS.daily_plan()}\n${note}` }
     case 'student_voice': {
       const u = p.universityId ? get('universities', Number(p.universityId)) : undefined
       const subject = u?.name ?? String(p.subject ?? p.note ?? '').trim()
-      if (!subject) throw new Error('Universitet seçilməyib (universityId və ya ad lazımdır)')
+      if (!subject) throw new Error('No university selected (universityId or a name is required)')
       const prof = getProfile()
       const focus = [
         `The user: field ${prof.field || prof.directions.join(', ') || 'unknown'}; citizenship ${prof.citizenship || 'unknown'}. Give extra weight to what matters for them (their department/field, international students).`,
         u?.city ? `City: ${u.city}.` : '',
         p.note && u ? `User note: ${String(p.note)}` : '',
       ].filter(Boolean).join('\n')
-      return { title: `Tələbə səsi: ${subject}`, prompt: JOB_PROMPTS.student_voice(subject, u?.id, focus) }
+      return { title: `Student voice: ${subject}`, prompt: JOB_PROMPTS.student_voice(subject, u?.id, focus) }
     }
     case 'direction_fit': {
       const all = list('directions').filter((d) => d.status !== 'dropped')
       const one = p.directionId ? get('directions', Number(p.directionId)) : undefined
       const scope = one ? [one] : all
-      if (!scope.length) throw new Error('Əvvəl ən az bir istiqamət qrupu əlavə et')
+      if (!scope.length) throw new Error('First add at least one direction group')
       const prof = getProfile()
       const groups = scope.map((d) => `[A${d.id}] ${d.name}: ${d.description} (keywords: ${d.keywords.join(', ')}; user interest: ${d.interest ? `${d.interest}/5` : 'not rated'})`).join('\n')
       const others = one ? all.filter((d) => d.id !== one.id).map((d) => `[A${d.id}] ${d.name}`).join(', ') : ''
@@ -344,16 +362,16 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
         `Education: ${prof.education || '-'}; languages: ${prof.languages || '-'}; citizenship: ${prof.citizenship || '-'}`,
         `Target countries: ${prof.countries.join(', ') || 'any'}`,
       ].join('\n')
-      return { title: one ? `İstiqamət analizi: ${one.name}` : 'İstiqamətlərin müqayisəsi', prompt: `${JOB_PROMPTS.direction_fit(groups, profile, others)}\n${note}` }
+      return { title: one ? `Direction analysis: ${one.name}` : 'Comparison of directions', prompt: `${JOB_PROMPTS.direction_fit(groups, profile, others)}\n${note}` }
     }
     case 'portal_scan': {
       const prof = getProfile()
       const directions = prof.directions.length ? prof.directions : list('topics').filter((t) => t.status === 'active').map((t) => t.title)
-      if (!directions.length) throw new Error('Profildə ən az bir tədqiqat istiqaməti yaz (məs. NLP)')
+      if (!directions.length) throw new Error('Add at least one research interest in the Profile (e.g. NLP)')
       const conds = prof.conditions.map((k) => CONDITION_BY_KEY[k]).filter(Boolean)
       const u = p.universityId ? get('universities', Number(p.universityId)) : undefined
       const criteria = [
-        `Research directions: ${directions.join('; ')}`,
+        `Research interests: ${directions.join('; ')}`,
         `Target countries: ${prof.countries.join(', ') || 'any'}`,
         `Hard conditions: ${conds.length ? conds.map((c) => `\n- [${c.key}] ${c.check}`).join('') : 'none'}`,
         prof.conditionsNote ? `Extra conditions: ${prof.conditionsNote}` : '',
@@ -361,12 +379,12 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
         `Universities already on the board: ${list('universities').map((x) => `${x.name} (U${x.id})`).join(', ') || 'none'}`,
       ].filter(Boolean)
       const focus = [u ? `Focus on positions at ${u.name} (U${u.id}).` : '', note].filter(Boolean).join('\n')
-      return { title: u ? `PhD elanları: ${u.name}` : 'PhD portallarında elan axtarışı', prompt: JOB_PROMPTS.portal_scan(criteria.join('\n'), focus) }
+      return { title: u ? `PhD positions: ${u.name}` : 'PhD position search on portals', prompt: JOB_PROMPTS.portal_scan(criteria.join('\n'), focus) }
     }
     case 'admission_chance': {
       const one = p.universityId ? get('universities', Number(p.universityId)) : undefined
       const unis = one ? [one] : list('universities')
-      if (!unis.length) throw new Error('Əvvəl universitet əlavə et')
+      if (!unis.length) throw new Error('First add a university')
       const prof = getProfile()
       const scope = unis
         .map((u) => `[U${u.id}] ${u.name} (${u.countryCode || u.country || '?'}) | rank: ${u.rankLabel ?? '?'} | language test: ${u.langCert ?? 'unknown'} | openalex: ${u.openalexId ?? '-'} | researchers on board: ${list('researchers').filter((r) => r.universityId === u.id).length}${u.admitChance !== undefined ? ` | earlier estimate: ${u.admitChance}%` : ''}`)
@@ -379,12 +397,12 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
         `Languages: ${prof.languages || '-'}; citizenship: ${prof.citizenship || '-'}`,
         `Conditions the user needs: ${conds.join(', ') || 'none'}`,
       ].join('\n')
-      return { title: one ? `Qəbul şansı: ${one.name}` : 'Qəbul şansının qiymətləndirilməsi', prompt: `${JOB_PROMPTS.admission_chance(scope, applicant)}\n${note}` }
+      return { title: one ? `Admission chance: ${one.name}` : 'Admission chance estimate', prompt: `${JOB_PROMPTS.admission_chance(scope, applicant)}\n${note}` }
     }
     case 'venue_match': {
       const title = String(p.title ?? '').trim()
-      if (!title) throw new Error('Məqalənin başlığı lazımdır')
-      return { title: `Jurnal seçimi: ${title.slice(0, 60)}`, prompt: `${JOB_PROMPTS.venue_match(title, String(p.abstract ?? ''))}\n${note}` }
+      if (!title) throw new Error('The paper title is required')
+      return { title: `Venue match: ${title.slice(0, 60)}`, prompt: `${JOB_PROMPTS.venue_match(title, String(p.abstract ?? ''))}\n${note}` }
     }
   }
 }
@@ -392,7 +410,7 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
 export function startJob(kind: JobKind, params: Record<string, unknown>): string {
   const id = crypto.randomUUID().slice(0, 8)
   const job: Job & { abort?: AbortController } = {
-    id, kind, title: kind, module: JOB_MODULE[kind], status: 'running', progress: 'Hazırlanır...', startedAt: new Date().toISOString(), abort: new AbortController(),
+    id, kind, title: kind, module: JOB_MODULE[kind], status: 'running', progress: 'Preparing...', startedAt: new Date().toISOString(), abort: new AbortController(),
   }
   jobs.set(id, job)
   publishJob(job)
@@ -405,14 +423,14 @@ async function runJob(job: Job & { abort?: AbortController }, params: Record<str
   try {
     const { title, prompt } = await buildJobPrompt(job.kind as JobKind, params)
     job.title = title
-    job.progress = 'Claude işə başladı'
+    job.progress = 'Claude started the work'
     publishJob(job)
-    logActivity('ai', job.module, `Arxa plan işi: ${title}`)
+    logActivity('ai', job.module, `Background job: ${title}`)
     const effort = job.kind === 'daily_plan' ? 'medium' : s.jobEffort
     const { text, error } = await withFailover(
       (acc, _retry, onRateLimit) => {
         // Job prompts are in English, so the language of what the user reads has to be stated.
-        const full = `${prompt}\n\nLanguage: write every summary, note and the final report in Azerbaijani; keep paper titles, venue names and quotes in their original language.`
+        const full = `${prompt}\n\nLanguage: write every summary, note and the final report in ${s.language || 'English'}; keep paper titles, venue names and quotes in their original language.`
         const q = query({ prompt: full, options: baseOptions({ effort, maxTurns: 90, abort: job.abort!, persist: false, account: acc }) })
         return consume(q, {
           onRateLimit,
@@ -425,19 +443,19 @@ async function runJob(job: Job & { abort?: AbortController }, params: Record<str
         })
       },
       (from, to) => {
-        job.progress = `${from.label} limiti bitdi, ${to.label} hesabı ilə yenidən`
+        job.progress = `${from.label} limit reached, retrying with ${to.label}`
         publishJob(job)
       },
     )
     if (error) throw new Error(error)
     job.status = 'done'
-    job.progress = 'Bitdi'
-    postReport(`**Arxa plan işi bitdi: ${job.title}**\n\n${text}`)
-    logActivity('ai', job.module, `Bitdi: ${job.title}`)
+    job.progress = 'Done'
+    postReport(`**Background job finished: ${job.title}**\n\n${text}`)
+    logActivity('ai', job.module, `Finished: ${job.title}`)
   } catch (e) {
     job.status = 'error'
-    job.progress = job.abort?.signal.aborted ? 'Dayandırıldı' : friendlyError((e as Error).message).replace(/\*\*/g, '')
-    logActivity('system', job.module, `İş alınmadı: ${job.title} - ${job.progress}`)
+    job.progress = job.abort?.signal.aborted ? 'Stopped' : friendlyError((e as Error).message).replace(/\*\*/g, '')
+    logActivity('system', job.module, `Job failed: ${job.title} - ${job.progress}`)
   } finally {
     job.finishedAt = new Date().toISOString()
     publishJob(job)

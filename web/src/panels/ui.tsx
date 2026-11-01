@@ -3,7 +3,7 @@ import { ExternalLink, Eye, EyeOff, LoaderCircle, Sparkles, Trash2 } from 'lucid
 import { admitBand } from '../../../shared/criteria'
 import type { ModuleKey } from '../../../shared/types'
 import { items, type Coll } from '../api'
-import { az } from '../lib/util'
+import { statusLabel } from '../lib/util'
 import { useStore } from '../store'
 
 export function Field({ label, children, span }: { label: string; children: ReactNode; span?: number }) {
@@ -28,7 +28,7 @@ export function StatusSelect<T extends string>({ value, options, onChange }: { v
   return (
     <select className="select sm" value={value} onChange={(e) => onChange(e.target.value as T)}>
       {options.map((o) => (
-        <option key={o} value={o}>{az(o)}</option>
+        <option key={o} value={o}>{statusLabel(o)}</option>
       ))}
     </select>
   )
@@ -40,12 +40,12 @@ export function DeleteBtn({ coll, id, label }: { coll: Coll; id: number; label?:
   if (ask)
     return (
       <span className="row" style={{ gap: 4 }}>
-        <button className="btn sm danger" onClick={() => items.remove(coll, id).catch((e) => toast(String(e)))}>Sil</button>
-        <button className="btn sm ghost" onClick={() => setAsk(false)}>Ləğv</button>
+        <button className="btn sm danger" onClick={() => items.remove(coll, id).catch((e) => toast(String(e)))}>Delete</button>
+        <button className="btn sm ghost" onClick={() => setAsk(false)}>Cancel</button>
       </span>
     )
   return (
-    <button className="mod-btn" title={label ?? 'Sil'} onClick={() => setAsk(true)}>
+    <button className="mod-btn" title={label ?? 'Delete'} onClick={() => setAsk(true)}>
       <Trash2 size={13} />
     </button>
   )
@@ -59,14 +59,14 @@ export function JobButton({ kind, params, module, label, disabled }: { kind: str
     return (
       <span className="row" style={{ gap: 6 }}>
         <span className="chip violet"><LoaderCircle size={10} className="spin" /> {running.progress.slice(0, 60)}</span>
-        <button className="btn sm ghost" onClick={() => stopJob(running.id)}>Dayandır</button>
+        <button className="btn sm ghost" onClick={() => stopJob(running.id)}>Stop</button>
       </span>
     )
   return (
     <button
       className="btn primary"
       disabled={disabled || claude !== 'connected'}
-      title={claude !== 'connected' ? 'Əvvəl Claude-a qoşul' : undefined}
+      title={claude !== 'connected' ? 'Connect to Claude first' : undefined}
       onClick={() => startJob(kind, params)}
     >
       <Sparkles size={13} /> {label}
@@ -77,7 +77,7 @@ export function JobButton({ kind, params, module, label, disabled }: { kind: str
 export function AskTalvis({ text, label }: { text: string; label: string }) {
   const { setDraft } = useStore()
   return (
-    <button className="btn sm ghost" onClick={() => setDraft(text)} title="Mətni çata yazır, sən göndərirsən">
+    <button className="btn sm ghost" onClick={() => setDraft(text)} title="Puts the text in the chat; you send it">
       <Sparkles size={12} /> {label}
     </button>
   )
@@ -92,7 +92,7 @@ export function JobLog({ module }: { module: ModuleKey }) {
       {jobs.map((j) => (
         <div key={j.id} className="row" style={{ gap: 8 }}>
           <span className={`chip ${j.status === 'running' ? 'violet' : j.status === 'done' ? 'green' : 'red'}`}>
-            {j.status === 'running' ? 'gedir' : j.status === 'done' ? 'bitdi' : 'xəta'}
+            {j.status === 'running' ? 'running' : j.status === 'done' ? 'done' : 'error'}
           </span>
           <span className="ellip" style={{ fontSize: 12 }}>{j.title}</span>
           <span className="faint ellip" style={{ fontSize: 11 }}>{j.progress}</span>
@@ -117,7 +117,7 @@ export function TagInput({ value, onChange, suggestions = [], placeholder }: { v
         {value.map((v) => (
           <span key={v} className="chip cyan solid tag">
             {v}
-            <button title="Sil" onClick={() => onChange(value.filter((x) => x !== v))}>×</button>
+            <button title="Delete" onClick={() => onChange(value.filter((x) => x !== v))}>×</button>
           </span>
         ))}
         <input
@@ -168,7 +168,7 @@ export function Peek({ text, label }: { text?: string; label?: string }) {
     <div className={`peek ${open ? 'open' : over ? 'over' : ''}`}>
       <span ref={ref} className="peek-text">{text}</span>
       {(over || open) && (
-        <button className="peek-btn" title={open ? 'Gizlət' : text} onClick={() => setOpen(!open)}>
+        <button className="peek-btn" title={open ? 'Hide' : text} onClick={() => setOpen(!open)}>
           {open ? <EyeOff size={13} /> : <Eye size={13} />}
           {label && !open && <span>{label}</span>}
         </button>
@@ -179,12 +179,12 @@ export function Peek({ text, label }: { text?: string; label?: string }) {
 
 /** Talvis' admission-chance estimate as a scale coloured by band. */
 export function AdmitBar({ chance, compact }: { chance?: number; compact?: boolean }) {
-  if (chance === undefined) return compact ? null : <span className="faint">qiymətləndirilməyib</span>
+  if (chance === undefined) return compact ? null : <span className="faint">not estimated</span>
   const band = admitBand(chance)
   const style = { '--dc': `var(--${band.tone})` } as CSSProperties
   if (compact)
     return (
-      <span className="admit-mini" style={style} title={`Qəbul şansı (Talvis təxmini): ${chance}% · ${band.label}`}>
+      <span className="admit-mini" style={style} title={`Admission chance (Talvis estimate): ${chance}% · ${band.label}`}>
         <span className="admit-track"><i style={{ width: `${chance}%` }} /></span>
         <b>{chance}%</b>
       </span>

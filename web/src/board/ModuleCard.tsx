@@ -40,13 +40,13 @@ function ModuleCard({ moduleKey, open, onToggle }: CardProps) {
       style={{ '--accent': def.accent, height: open ? OPEN_H[def.key] ?? 236 : undefined } as CSSProperties}
     >
       <Corners />
-      <div className="mod-head" onClick={() => onToggle(def.key)} title={open ? 'Bağla' : 'Aç'}>
+      <div className="mod-head" onClick={() => onToggle(def.key)} title={open ? 'Close' : 'Open'}>
         <span className="mod-idx">{def.idx}</span>
         <span className="mod-icon"><Icon size={14} /></span>
         <span className="mod-title">{def.title}</span>
         <span className="grow" />
         {count !== '' && <span className="mod-count">{count}</span>}
-        <button className="mod-btn" title="Genişləndir" onClick={(e) => { e.stopPropagation(); setExpanded(def.key) }}>
+        <button className="mod-btn" title="Expand" onClick={(e) => { e.stopPropagation(); setExpanded(def.key) }}>
           <Maximize2 size={13} />
         </button>
         <span className="mod-chev"><ChevronDown size={14} /></span>

@@ -28,7 +28,7 @@ export interface Profile {
   interests: string
   background: string
   languages: string
-  /** Broad research directions, e.g. NLP, adaptive learning systems. */
+  /** The research interests the user typed, e.g. NLP, HCI, adaptive learning, LLMs. Talvis groups them into Direction groups. */
   directions: string[]
   /** Ranking system for the university filter: QS, THE, ARWU or any. */
   rankingSystem: string

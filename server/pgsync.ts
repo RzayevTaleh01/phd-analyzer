@@ -50,7 +50,7 @@ export async function pushAll(opts: { force?: boolean } = {}) {
   const p = connect()
   openLocal()
   await ensurePgSchema(p)
-  if (!opts.force && (await pgRowCount(p)) > 0) throw new Error('Postgres bazasında artıq Talvis datası var. Üzərinə yazmaq üçün --force ver.')
+  if (!opts.force && (await pgRowCount(p)) > 0) throw new Error('The Postgres database already contains Talvis data. Pass --force to overwrite it.')
   for (const [t, key] of Object.entries(DURABLE_TABLES)) {
     const rows = local!.prepare(`SELECT * FROM ${t}`).all() as Record<string, unknown>[]
     if (opts.force) await p.query(`DELETE FROM ${PREFIX}${t}`)
@@ -79,7 +79,7 @@ async function pullAll(p: pg.Pool) {
   const tables: { t: string; rows: Record<string, unknown>[] }[] = []
   for (const t of Object.keys(DURABLE_TABLES)) tables.push({ t, rows: (await p.query(`SELECT * FROM ${PREFIX}${t}`)).rows })
   tx(tables)
-  log(`yükləndi: ${tables.map((x) => `${x.t} ${x.rows.length}`).join(', ')}`)
+  log(`loaded: ${tables.map((x) => `${x.t} ${x.rows.length}`).join(', ')}`)
 }
 
 function openLocal() {
@@ -119,11 +119,11 @@ export async function restore() {
     await pullAll(p)
     await restoreFiles(p)
   } else {
-    log('Postgres boşdur: lokal data köçürülür')
+    log('Postgres is empty: copying local data')
     await pushAll({ force: true })
   }
   enabled = true
-  setInterval(() => void snapshotFiles().catch((e) => log(`fayl yedəyi alınmadı: ${(e as Error).message}`)), 60_000).unref()
+  setInterval(() => void snapshotFiles().catch((e) => log(`file backup failed: ${(e as Error).message}`)), 60_000).unref()
   const stop = async () => {
     await flush().catch(() => undefined)
     await snapshotFiles().catch(() => undefined)
@@ -178,7 +178,7 @@ export function flush(): Promise<void> {
       await client.query('ROLLBACK').catch(() => undefined)
       // Keep the rows and try again with the next write.
       for (const b of batch) pending.set(`${b.t}:${String(b.val)}`, b)
-      log(`yazmaq alınmadı, yenidən cəhd olunacaq: ${(e as Error).message}`)
+      log(`write failed, will retry: ${(e as Error).message}`)
     } finally {
       client.release()
     }
@@ -237,7 +237,7 @@ async function restoreFiles(p: pg.Pool) {
     fs.writeFileSync(target, Buffer.from(r.body, 'base64'), { mode: 0o600 })
     lastHash.set(r.path, r.hash)
   }
-  if (rows.length) log(`${rows.length} Claude giriş faylı bərpa olundu`)
+  if (rows.length) log(`${rows.length} Claude login files restored`)
 }
 
 export async function closePg() {

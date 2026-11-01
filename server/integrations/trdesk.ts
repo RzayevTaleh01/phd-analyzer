@@ -1,9 +1,8 @@
-// TRDesk (the user's task manager) through its agent API: plans, days, tasks, notes.
-// Key: TRDesk → Ayarlar → "Claude API (agent)" → "Yeni açar" (trd_...), saved in Settings.
+// Optional integration with the TRDesk task manager through its agent API: plans, days, tasks, notes.
+// Key: TRDesk → Settings → "Claude API (agent)" → "New key" (trd_...); key and the TRDesk address go in Settings.
 import { getSettings, list, setSettings, update } from '../db'
 import { todayISO } from '../agent/overview'
 
-export const TRDESK_DEFAULT_URL = 'https://trdesk-web-50524487911.us-east4.run.app'
 /** L lesson · R reading · C code · P paper · W writing · Q test · X review · S other */
 export const TASK_TYPES = ['L', 'R', 'C', 'P', 'W', 'Q', 'X', 'S'] as const
 
@@ -35,8 +34,9 @@ export class TrdeskError extends Error {}
 
 function conf() {
   const s = getSettings()
-  if (!s.trdeskKey) throw new TrdeskError('TRDesk açarı yoxdur: Profil → Ayarlar → TRDesk açarı (trd_...)')
-  return { base: (s.trdeskUrl || TRDESK_DEFAULT_URL).replace(/\/+$/, ''), key: s.trdeskKey }
+  if (!s.trdeskKey) throw new TrdeskError('TRDesk key missing: Profile → Settings → TRDesk key (trd_...)')
+  if (!s.trdeskUrl) throw new TrdeskError('TRDesk URL missing: Profile → Settings → TRDesk URL')
+  return { base: s.trdeskUrl.replace(/\/+$/, ''), key: s.trdeskKey }
 }
 
 export async function tr<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
@@ -84,7 +84,7 @@ export const trdesk = {
 /** The plan Talvis works in by default (Settings), or the given id/name. */
 export function planRef(plan?: string): string {
   const p = plan || getSettings().trdeskPlan
-  if (!p) throw new TrdeskError('TRDesk planı seçilməyib: plan adı/id-si ver və ya trdesk_sync ilə "PhD plan" yarat')
+  if (!p) throw new TrdeskError('No TRDesk plan selected: give a plan name or id, or create "PhD plan" with trdesk_sync')
   return p
 }
 
@@ -133,7 +133,7 @@ export async function syncBoard(o: { title?: string } = {}): Promise<SyncReport>
   if (!ref) {
     const title = o.title || 'PhD plan'
     const existing = (await trdesk.plans()).find((p) => p.title.toLowerCase() === title.toLowerCase() && !p.archived)
-    ref = existing?.id ?? (await trdesk.createPlan({ title, startDate: today, description: 'PhD müraciət planı: deadline-lar, universitetlər, sənədlər və professorlarla əlaqə. Talvis (PhD Analyzer) idarə edir.', color: 'violet' })).id
+    ref = existing?.id ?? (await trdesk.createPlan({ title, startDate: today, description: 'PhD application plan: deadlines, universities, documents and contact with professors. Managed by Talvis (PhD Analyzer).', color: 'violet' })).id
     created = !existing
     setSettings({ trdeskPlan: ref })
   }
@@ -157,11 +157,11 @@ export async function syncBoard(o: { title?: string } = {}): Promise<SyncReport>
       if (date < plan.startDate) {
         // A passed deadline is history; an unfinished task still has to be done, so it goes on today.
         if (key[0] === 'D') {
-          rep.skipped.push(`${key} ${item.title} (${item.date}: keçib)`)
+          rep.skipped.push(`${key} ${item.title} (${item.date}: already passed)`)
           return
         }
         date = today >= plan.startDate ? today : plan.startDate
-        text = `${item.title} (gecikib, son tarix ${item.date})`
+        text = `${item.title} (overdue, was due ${item.date})`
       }
       await trdesk.addTask(plan.id, { text, date, type: item.type, minutes: item.minutes, section: marker(key[0] as 'D' | 'K', Number(key.slice(1))), content: item.content })
       rep.added.push(`${key} ${text} (${date})`)
@@ -181,7 +181,7 @@ export async function syncBoard(o: { title?: string } = {}): Promise<SyncReport>
 
   for (const d of list('deadlines')) {
     const title = `Deadline: ${d.title}${uniName(d.universityId) ? ` (${uniName(d.universityId)})` : ''}`
-    const content = [`**${d.kind}** · ${d.dueDate}${d.dueTime ? ` ${d.dueTime}` : ''}${d.timezone ? ` ${d.timezone}` : ''}`, d.verified ? 'Təsdiqli (rəsmi mənbə)' : 'Təsdiqlənməyib', d.sourceUrl ?? '', d.notes ?? ''].filter(Boolean).join('\n\n')
+    const content = [`**${d.kind}** · ${d.dueDate}${d.dueTime ? ` ${d.dueTime}` : ''}${d.timezone ? ` ${d.timezone}` : ''}`, d.verified ? 'Verified (official source)' : 'Not verified', d.sourceUrl ?? '', d.notes ?? ''].filter(Boolean).join('\n\n')
     await mirror(`D${d.id}`, { title, date: d.dueDate, done: d.status !== 'open', type: 'W', minutes: 0, content }, () => update('deadlines', d.id, { status: 'done' }))
   }
   for (const k of list('tasks')) {

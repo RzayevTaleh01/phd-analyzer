@@ -21,7 +21,7 @@ function fromS2(p: any): WorkHit {
     s2Id: p.paperId,
     doi: p.externalIds?.DOI ?? undefined,
     arxivId: p.externalIds?.ArXiv ?? undefined,
-    title: p.title ?? '(adsız)',
+    title: p.title ?? '(untitled)',
     year: p.year ?? undefined,
     venue: p.venue || undefined,
     authors: (p.authors ?? []).map((a: any) => a.name),

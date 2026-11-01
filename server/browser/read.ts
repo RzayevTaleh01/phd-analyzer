@@ -110,13 +110,13 @@ async function plainFetch(url: string, cacheMs = 6 * 3600_000): Promise<{ page: 
 /** A PDF as a page: the text of every page, marked with its page number. */
 export async function pdfAsPage(url: string): Promise<RenderedPage> {
   const d = await readPdf(url)
-  const text = d.text.map((t, i) => `--- səhifə ${i + 1} ---\n${t}`).join('\n\n')
+  const text = d.text.map((t, i) => `--- page ${i + 1} ---\n${t}`).join('\n\n')
   return {
     url,
     finalUrl: d.url,
     status: 200,
     title: d.title ?? d.url.split('/').pop() ?? 'PDF',
-    text: d.scanned ? `(PDF skan edilib: mətn qatı yoxdur və ya çox azdır, ${d.pages} səhifə)\n${text}` : text,
+    text: d.scanned ? `(PDF is scanned: no text layer or very little text, ${d.pages} pages)\n${text}` : text,
     links: [],
     jsonld: [],
     via: 'pdf',

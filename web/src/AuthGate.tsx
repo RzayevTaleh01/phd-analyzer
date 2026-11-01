@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { LockKeyhole } from 'lucide-react'
+import { BookOpen, LockKeyhole } from 'lucide-react'
 import Reactor from './board/Reactor'
 
 /** On a deployed Talvis (APP_PASSWORD set) the board loads only after the password; locally it passes straight through. */
@@ -43,12 +43,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           }}
           style={{ width: '100%', marginTop: 22 }}
         >
-          <input className="input" type="password" autoFocus placeholder="Parol" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input className="input" type="password" autoFocus placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <button className="btn primary" style={{ width: '100%', marginTop: 10, justifyContent: 'center' }} disabled={busy || !password}>
-            <LockKeyhole size={13} /> Daxil ol
+            <LockKeyhole size={13} /> Sign in
           </button>
         </form>
         {error && <div className="chip red" style={{ marginTop: 10 }}>{error}</div>}
+        <a className="auth-docs" href="/docs"><BookOpen size={12} /> What is PhD Analyzer? Read the user guide</a>
       </div>
     </div>
   )

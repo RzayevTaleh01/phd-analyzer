@@ -42,7 +42,7 @@ function claudeBinary(): string {
 
 export function startLogin(env: NodeJS.ProcessEnv, accountId: string, onDone: () => void): LoginState {
   cancelLogin()
-  set({ phase: 'starting', accountId, message: 'Claude giriş səhifəsi hazırlanır...' })
+  set({ phase: 'starting', accountId, message: 'Preparing the Claude sign-in page...' })
   let out = ''
   const p = spawn(claudeBinary(), ['auth', 'login', '--claudeai'], { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
   proc = p
@@ -53,27 +53,27 @@ export function startLogin(env: NodeJS.ProcessEnv, accountId: string, onDone: ()
     if (url && state.phase === 'starting') set({ phase: 'waiting_code', accountId, url })
     // A rejected code makes the CLI print an error and/or ask again.
     else if (state.phase === 'verifying' && /invalid|error|failed|paste code/i.test(chunk))
-      set({ phase: 'waiting_code', accountId, url: state.url, message: `Kod qəbul olunmadı: ${chunk.replace(/\s+/g, ' ').trim().slice(0, 160)}` })
+      set({ phase: 'waiting_code', accountId, url: state.url, message: `Code not accepted: ${chunk.replace(/\s+/g, ' ').trim().slice(0, 160)}` })
   }
   p.stdout.on('data', onData)
   p.stderr.on('data', onData)
   p.on('error', (e) => {
-    if (proc === p) set({ phase: 'error', accountId, message: `Claude proqramı başlamadı: ${e.message}` })
+    if (proc === p) set({ phase: 'error', accountId, message: `Could not start the Claude program: ${e.message}` })
   })
   p.on('exit', (code) => {
     if (proc !== p) return
     proc = null
     if (killTimer) clearTimeout(killTimer)
     const tail = out.replace(/https:\/\/\S+/g, '').trim().split('\n').slice(-3).join(' ').slice(0, 300)
-    if (code === 0) set({ phase: 'done', accountId, message: 'Claude hesabına daxil oldun.' })
-    else if (state.phase !== 'idle') set({ phase: 'error', accountId, message: tail || `Giriş alınmadı (kod ${code}).` })
+    if (code === 0) set({ phase: 'done', accountId, message: 'Signed in to your Claude account.' })
+    else if (state.phase !== 'idle') set({ phase: 'error', accountId, message: tail || `Sign-in failed (code ${code}).` })
     onDone()
   })
   // An abandoned login should not keep a process around.
   killTimer = setTimeout(() => {
     if (proc === p) {
       p.kill()
-      set({ phase: 'error', accountId, message: 'Vaxt bitdi. Yenidən "Claude-a qoşul" bas.' })
+      set({ phase: 'error', accountId, message: 'Timed out. Press "Connect to Claude" again.' })
     }
   }, 15 * 60_000)
   return state
@@ -84,7 +84,7 @@ export function submitCode(code: string): LoginState {
   if (!proc || state.phase !== 'waiting_code') return state
   if (!clean) return state
   proc.stdin.write(`${clean}\n`)
-  set({ ...state, phase: 'verifying', message: 'Kod yoxlanılır...' })
+  set({ ...state, phase: 'verifying', message: 'Checking the code...' })
   return state
 }
 

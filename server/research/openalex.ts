@@ -34,7 +34,7 @@ function toWork(w: any): WorkHit {
     openalexId: short(w.id),
     doi: cleanDoi(w.doi),
     arxivId: w.ids?.arxiv ? String(w.ids.arxiv).replace(/^https?:\/\/arxiv\.org\/abs\//, '') : undefined,
-    title: w.display_name ?? w.title ?? '(adsız)',
+    title: w.display_name ?? w.title ?? '(untitled)',
     year: w.publication_year ?? undefined,
     venue: loc?.source?.display_name ?? undefined,
     authors: (w.authorships ?? []).map((a: any) => a.author?.display_name).filter(Boolean),
