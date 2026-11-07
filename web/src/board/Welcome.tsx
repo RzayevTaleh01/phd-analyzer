@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { ArrowRight, Check, MapPin } from 'lucide-react'
+import { ArrowRight, Check } from 'lucide-react'
 import { DIRECTION_SUGGESTIONS } from '../../../shared/criteria'
 import { api } from '../api'
 import { Spinner, TagInput } from '../panels/ui'
@@ -49,7 +49,7 @@ export default function Welcome() {
   const start = async (interests: string[], countries: string[]) => {
     setBusy(true)
     try {
-      await api('/profile', { method: 'PUT', body: { ...fullState.profile, directions: interests, countries } })
+      await api('/profile', { method: 'PUT', body: { ...fullState.profile, directions: interests, ...(countries.length ? { countries } : {}) } })
       // Saving the interests closes this page; the job then fills the board.
       if (claude === 'connected') await startJob('setup_directions')
       else toast('Interests saved. Sign in from the Talvis panel, then use “Group my interests into directions” in your Profile.')
@@ -80,8 +80,8 @@ export function WelcomePage({ actions, onStart, startLabel, busy = false }: {
   busy?: boolean
 }) {
   const [interests, setInterests] = useState<string[]>([])
-  const [countries, setCountries] = useState('')
-  const start = () => onStart(interests, countries.split(',').map((c) => c.trim()).filter(Boolean))
+  // Countries are asked when the account is created (or on the Profile), not here.
+  const start = () => onStart(interests, [])
   const page = useRef<HTMLDivElement>(null)
   const toTop = () => {
     page.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -107,10 +107,6 @@ export function WelcomePage({ actions, onStart, startLabel, busy = false }: {
             <label className="hero-label">Research interests</label>
             <TagInput value={interests} onChange={setInterests} suggestions={DIRECTION_SUGGESTIONS.slice(0, 4)} placeholder="e.g. NLP, HCI, LLMs (Enter after each)" />
             <div className="hero-row">
-              <span className="hero-country">
-                <MapPin size={16} aria-hidden="true" />
-                <input aria-label="Countries (optional)" value={countries} placeholder="Countries (optional)" onChange={(e) => setCountries(e.target.value)} />
-              </span>
               <button className="btn primary lg" disabled={!interests.length || busy} onClick={start}>
                 {busy ? <Spinner /> : null} {startLabel} <ArrowRight size={18} />
               </button>
