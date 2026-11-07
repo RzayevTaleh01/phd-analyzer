@@ -4,7 +4,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { broadcast } from '../events'
+import { broadcastAll as broadcast } from '../events'
 
 export interface LoginState {
   phase: 'idle' | 'starting' | 'waiting_code' | 'verifying' | 'done' | 'error'

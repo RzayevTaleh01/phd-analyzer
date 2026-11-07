@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowLeft } from 'lucide-react'
 import guide from '../../docs/GUIDE.md?raw'
-import Reactor from './board/Reactor'
+import Logo from './board/Logo'
 
 /** Same anchors as GitHub, so the guide's links work both on GitHub and here. */
 function slug(text: string) {
@@ -32,19 +32,15 @@ export default function Docs() {
   return (
     <div className="docs-page">
       <aside className="docs-nav">
-        <a className="row docs-brand" href="/">
-          <Reactor size={26} />
-          <div>
-            <div className="brand-title">PHD ANALYZER</div>
-            <div className="brand-sub">USER GUIDE</div>
-          </div>
+        <a className="row" href="/" style={{ gap: 10, color: 'inherit', textDecoration: 'none' }}>
+          <Logo size={30} />
         </a>
         <nav>
           {SECTIONS.map((s) => (
             <a key={s} href={`#${slug(s)}`}>{s}</a>
           ))}
         </nav>
-        <a className="btn ghost sm" href="/"><ArrowLeft size={12} /> Open the app</a>
+        <a className="btn sm" href="/"><ArrowLeft size={14} /> Open the app</a>
       </aside>
       <main className="docs-body">
         <ReactMarkdown

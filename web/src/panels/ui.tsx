@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { ExternalLink, Eye, EyeOff, LoaderCircle, Sparkles, Trash2 } from 'lucide-react'
+import { ExternalLink, Eye, EyeOff, LoaderCircle, Sparkles, Trash2, X } from 'lucide-react'
 import { admitBand } from '../../../shared/criteria'
 import type { ModuleKey } from '../../../shared/types'
 import { items, type Coll } from '../api'
@@ -52,7 +52,7 @@ export function DeleteBtn({ coll, id, label }: { coll: Coll; id: number; label?:
 }
 
 /** Button that starts a background Claude job, showing progress while this module has one running. */
-export function JobButton({ kind, params, module, label, disabled }: { kind: string; params?: Record<string, unknown>; module: ModuleKey; label: string; disabled?: boolean }) {
+export function JobButton({ kind, params, module, label, disabled, className = 'btn primary' }: { kind: string; params?: Record<string, unknown>; module: ModuleKey; label: string; disabled?: boolean; className?: string }) {
   const { state, startJob, stopJob, claude } = useStore()
   const running = state.jobs.find((j) => j.module === module && j.status === 'running' && j.kind === kind)
   if (running)
@@ -64,7 +64,7 @@ export function JobButton({ kind, params, module, label, disabled }: { kind: str
     )
   return (
     <button
-      className="btn primary"
+      className={className}
       disabled={disabled || claude !== 'connected'}
       title={claude !== 'connected' ? 'Connect to Claude first' : undefined}
       onClick={() => startJob(kind, params)}
@@ -115,9 +115,9 @@ export function TagInput({ value, onChange, suggestions = [], placeholder }: { v
     <div className="taginput">
       <div className="tags">
         {value.map((v) => (
-          <span key={v} className="chip cyan solid tag">
+          <span key={v} className="chip tag">
             {v}
-            <button title="Delete" onClick={() => onChange(value.filter((x) => x !== v))}>×</button>
+            <button type="button" title="Remove" aria-label={`Remove ${v}`} onClick={() => onChange(value.filter((x) => x !== v))}><X size={12} strokeWidth={2.6} /></button>
           </span>
         ))}
         <input
@@ -137,7 +137,7 @@ export function TagInput({ value, onChange, suggestions = [], placeholder }: { v
       {suggestions.length > 0 && (
         <div className="row" style={{ gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
           {suggestions.filter((s) => !has(s)).map((s) => (
-            <button key={s} className="qchip" onClick={() => onChange([...value, s])}>+ {s}</button>
+            <button key={s} type="button" className="qchip" onClick={() => onChange([...value, s])}>+ {s}</button>
           ))}
         </div>
       )}

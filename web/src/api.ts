@@ -8,6 +8,8 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
     headers: opts.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   })
+  // The session ended (signed out elsewhere, password changed): back to the sign-in page.
+  if (res.status === 401 && !path.startsWith('/auth')) window.location.reload()
   const text = await res.text()
   const data = text ? JSON.parse(text) : undefined
   if (!res.ok) throw new Error((data as { error?: string })?.error ?? `HTTP ${res.status}`)

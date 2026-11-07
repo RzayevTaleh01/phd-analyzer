@@ -1,73 +1,73 @@
-import { memo, useEffect, useRef, type CSSProperties } from 'react'
-import { ChevronDown, Maximize2 } from 'lucide-react'
-import { MODULE_BY_KEY, type ModuleDef } from '../modules/registry'
+import { memo, useEffect, useRef } from 'react'
+import { Maximize2 } from 'lucide-react'
+import type { AppState, Job } from '../../../shared/types'
+import { MODULE_BY_KEY, moduleNo, type ModuleDef } from '../modules/registry'
 import { useStore } from '../store'
 
-export function Corners() {
-  return (
-    <>
-      <span className="corner tl" />
-      <span className="corner tr" />
-      <span className="corner bl" />
-      <span className="corner br" />
-    </>
-  )
+interface CardProps {
+  moduleKey: ModuleDef['key']
+  s: AppState
+  job?: Job
+  live: boolean
+  open: boolean
+  onToggle: (k: ModuleDef['key']) => void
 }
 
-// Open cards keep the height their summaries were designed for.
-const OPEN_H: Partial<Record<ModuleDef['key'], number>> = { today: 420 }
+/** A module on the board: number, title, count, the three most relevant rows, and its main action. */
+function ModuleCard({ moduleKey, s, job, live, open, onToggle }: CardProps) {
+  const def = MODULE_BY_KEY[moduleKey]
+  const ref = useRef<HTMLElement>(null)
+  const { setExpanded, setView } = useStore()
+  const count = def.count(s)
+  const rows = open ? def.rows(s) : []
+  const openFull = () => (def.page ? setView(def.page) : setExpanded(def.key))
 
-interface CardProps { moduleKey: ModuleDef['key']; open: boolean; onToggle: (k: ModuleDef['key']) => void }
-
-function ModuleCard({ moduleKey, open, onToggle }: CardProps) {
-  const def: ModuleDef = MODULE_BY_KEY[moduleKey]
-  const ref = useRef<HTMLDivElement>(null)
-  const { state, live, setExpanded } = useStore()
-  const Icon = def.icon
-  const count = def.count(state)
-  const job = state.jobs.find((j) => j.module === def.key && j.status === 'running')
-  const isLive = Boolean(live[def.key]) || Boolean(job)
-
-  // Bring a card into view when it opens, e.g. because Talvis started working on it.
+  // Bring a card into view when Talvis starts working on it (not on first render).
+  const first = useRef(true)
   useEffect(() => {
-    if (open) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [open])
+    if (first.current) {
+      first.current = false
+      return
+    }
+    if (live) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [live])
 
   return (
-    <div
-      ref={ref}
-      className={`mod ${isLive ? 'live' : ''} ${open ? '' : 'closed'}`}
-      style={{ '--accent': def.accent, height: open ? OPEN_H[def.key] ?? 236 : undefined } as CSSProperties}
-    >
-      <Corners />
-      <div className="mod-head" onClick={() => onToggle(def.key)} title={open ? 'Close' : 'Open'}>
-        <span className="mod-idx">{def.idx}</span>
-        <span className="mod-icon"><Icon size={14} /></span>
-        <span className="mod-title">{def.title}</span>
-        <span className="grow" />
-        {count !== '' && <span className="mod-count">{count}</span>}
-        <button className="mod-btn" title="Expand" onClick={(e) => { e.stopPropagation(); setExpanded(def.key) }}>
-          <Maximize2 size={13} />
+    <article ref={ref} className={`card mcard ${live ? 'live' : ''} ${open ? '' : 'closed'}`}>
+      <div className="mcard-head">
+        <button className="mcard-toggle" onClick={() => onToggle(def.key)} aria-expanded={open} title={open ? 'Collapse' : 'Expand'}>
+          <span className="mono-idx">{moduleNo(def.key)}</span>
+          <h2>{def.title}</h2>
         </button>
-        <span className="mod-chev"><ChevronDown size={14} /></span>
+        {count !== '' && <span className="mcard-count">{count}</span>}
+        <button className="icon-ghost" aria-label={`Open ${def.title} full screen`} title="Open full screen" onClick={openFull}>
+          <Maximize2 size={15} />
+        </button>
       </div>
-      {job && <div className="ticker-bar" />}
       {open && (
         <>
-          <div className="mod-body">
-            <def.Summary s={state} />
-          </div>
-          <div className="mod-foot">
-            {job ? (
-              <span className="mod-job ellip">{job.progress}</span>
-            ) : (
-              <span className="ellip">{def.desc}</span>
-            )}
-            <button className="btn sm ghost act" onClick={() => setExpanded(def.key)}>{def.action}</button>
+          {job && (
+            <div className="mcard-live"><span className="dot-gold" />{job.progress || job.title}</div>
+          )}
+          {rows.length ? (
+            <ul className="mcard-rows">
+              {rows.map((r, i) => (
+                <li key={i} title={r.title}>
+                  <span className="a">{r.a}</span>
+                  <span className={`pill t-${r.tone}`}>{r.b}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mcard-empty">{def.empty}</div>
+          )}
+          <div className="mcard-foot">
+            <span>{def.desc}</span>
+            <button className="btn sm" onClick={() => setExpanded(def.key)}>{def.action}</button>
           </div>
         </>
       )}
-    </div>
+    </article>
   )
 }
 

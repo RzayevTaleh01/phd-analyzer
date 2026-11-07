@@ -5,9 +5,10 @@ import type {
   Activity, AppState, ChatMessage, Deadline, Direction, Doc, Gap, Group, Insight, ModuleKey, Paper, Position, Profile, Researcher, Task,
   Topic, University, Venue,
 } from '../shared/types'
+import { uid } from './ctx'
 import { broadcast } from './events'
 import { mirror } from './pgsync'
-import { createSchema, DATA_DIR } from './schema'
+import { createSchema, DATA_DIR, USER_TABLES } from './schema'
 
 export { DATA_DIR }
 fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -68,7 +69,7 @@ const DEFAULTS: { [K in Coll]: Partial<Collections[K]> } = {
   docs: { kind: 'note', content: '', status: 'draft' },
   positions: { portal: 'web', status: 'found' },
   insights: { source: 'reddit', sentiment: 0, themes: [], evidence: [], postsAnalyzed: 0, summary: '' },
-  directions: { description: '', keywords: [], color: '#2fd8ff', status: 'exploring' },
+  directions: { description: '', keywords: [], color: '#2563eb', status: 'exploring' },
 }
 
 type Row = { id: number; data: string; created_at: string; updated_at: string }
@@ -83,13 +84,15 @@ function hydrate<C extends Coll>(c: C, r: Row): Collections[C] {
   return base as unknown as Collections[C]
 }
 
+// Every board read and write below is scoped to the signed-in user (ctx.uid).
+
 export function list<C extends Coll>(c: C): Collections[C][] {
-  const rows = db.prepare(`SELECT * FROM ${c} ORDER BY id`).all() as Row[]
+  const rows = db.prepare(`SELECT * FROM ${c} WHERE uid = ? ORDER BY id`).all(uid()) as Row[]
   return rows.map((r) => hydrate(c, r))
 }
 
 export function get<C extends Coll>(c: C, id: number): Collections[C] | undefined {
-  const r = db.prepare(`SELECT * FROM ${c} WHERE id = ?`).get(id) as Row | undefined
+  const r = db.prepare(`SELECT * FROM ${c} WHERE id = ? AND uid = ?`).get(id, uid()) as Row | undefined
   return r ? hydrate(c, r) : undefined
 }
 
@@ -107,7 +110,7 @@ function strip(data: Record<string, unknown>) {
 export function insert<C extends Coll>(c: C, data: Partial<Collections[C]>): Collections[C] {
   const t = now()
   const payload = { ...DEFAULTS[c], ...strip(data as Record<string, unknown>) }
-  const info = db.prepare(`INSERT INTO ${c} (data, created_at, updated_at) VALUES (?, ?, ?)`).run(JSON.stringify(payload), t, t)
+  const info = db.prepare(`INSERT INTO ${c} (data, created_at, updated_at, uid) VALUES (?, ?, ?, ?)`).run(JSON.stringify(payload), t, t, uid())
   mirror.touch(c, Number(info.lastInsertRowid))
   changed(c)
   return get(c, Number(info.lastInsertRowid))!
@@ -117,32 +120,39 @@ export function update<C extends Coll>(c: C, id: number, patch: Partial<Collecti
   const cur = get(c, id)
   if (!cur) return undefined
   const next = { ...strip(cur as unknown as Record<string, unknown>), ...strip(patch as Record<string, unknown>) }
-  db.prepare(`UPDATE ${c} SET data = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(next), now(), id)
+  db.prepare(`UPDATE ${c} SET data = ?, updated_at = ? WHERE id = ? AND uid = ?`).run(JSON.stringify(next), now(), id, uid())
   mirror.touch(c, id)
   changed(c)
   return get(c, id)
 }
 
 export function remove(c: Coll, id: number): boolean {
-  const res = db.prepare(`DELETE FROM ${c} WHERE id = ?`).run(id)
+  const res = db.prepare(`DELETE FROM ${c} WHERE id = ? AND uid = ?`).run(id, uid())
   mirror.touch(c, id)
   if (res.changes) changed(c)
   return res.changes > 0
 }
 
-let pending = new Set<Coll | 'profile' | 'activity'>()
+// Change notices are batched per user and go only to that user's open boards.
+const pending = new Map<number, Set<Coll | 'profile' | 'activity'>>()
 let flushTimer: NodeJS.Timeout | null = null
 function changed(c: Coll | 'profile' | 'activity') {
-  pending.add(c)
+  const u = uid()
+  const set = pending.get(u) ?? new Set()
+  set.add(c)
+  pending.set(u, set)
   if (flushTimer) return
   flushTimer = setTimeout(() => {
-    broadcast('changed', { collections: [...pending] })
-    pending = new Set()
+    for (const [to, cs] of pending) broadcast('changed', { collections: [...cs] }, to)
+    pending.clear()
     flushTimer = null
   }, 120)
 }
 
 // ---------- key/value (profile, settings) ----------
+// Plain keys are server-wide (settings, Claude accounts); a user's own keys go through ukey().
+
+const ukey = (k: string) => `u${uid()}:${k}`
 
 export function kvGet<T>(k: string, fallback: T): T {
   const r = db.prepare('SELECT v FROM kv WHERE k = ?').get(k) as { v: string } | undefined
@@ -160,12 +170,12 @@ const EMPTY_PROFILE: Profile = {
 }
 
 export function getProfile(): Profile {
-  return kvGet('profile', EMPTY_PROFILE)
+  return kvGet(ukey('profile'), EMPTY_PROFILE)
 }
 
 export function setProfile(p: Partial<Profile>): Profile {
   const next = { ...getProfile(), ...p, updatedAt: now() }
-  kvSet('profile', next)
+  kvSet(ukey('profile'), next)
   changed('profile')
   return next
 }
@@ -226,7 +236,7 @@ export function setSettings(s: Partial<Settings>): Settings {
 
 export function logActivity(source: Activity['source'], module: ModuleKey, text: string): Activity {
   const at = now()
-  const info = db.prepare('INSERT INTO activity (at, source, module, text) VALUES (?, ?, ?, ?)').run(at, source, module, text)
+  const info = db.prepare('INSERT INTO activity (at, source, module, text, uid) VALUES (?, ?, ?, ?, ?)').run(at, source, module, text, uid())
   const a: Activity = { id: Number(info.lastInsertRowid), at, source, module, text }
   mirror.touch('activity', a.id)
   broadcast('activity', a)
@@ -234,7 +244,7 @@ export function logActivity(source: Activity['source'], module: ModuleKey, text:
 }
 
 function recentActivity(n = 40): Activity[] {
-  return (db.prepare('SELECT * FROM activity ORDER BY id DESC LIMIT ?').all(n) as Activity[]).reverse()
+  return (db.prepare('SELECT id, at, source, module, text FROM activity WHERE uid = ? ORDER BY id DESC LIMIT ?').all(uid(), n) as Activity[]).reverse()
 }
 
 // ---------- chat ----------
@@ -242,19 +252,19 @@ function recentActivity(n = 40): Activity[] {
 export interface Thread { id: string; title: string; sdk_session: string | null; sdk_account: string | null; created_at: string }
 
 export function currentThread(): Thread {
-  const t = db.prepare('SELECT * FROM chat_threads ORDER BY created_at DESC LIMIT 1').get() as Thread | undefined
+  const t = db.prepare('SELECT id, title, sdk_session, sdk_account, created_at FROM chat_threads WHERE uid = ? ORDER BY created_at DESC LIMIT 1').get(uid()) as Thread | undefined
   return t ?? newThread()
 }
 
 export function newThread(title = 'Chat'): Thread {
   const t: Thread = { id: crypto.randomUUID(), title, sdk_session: null, sdk_account: null, created_at: now() }
-  db.prepare('INSERT INTO chat_threads (id, title, sdk_session, created_at) VALUES (?, ?, ?, ?)').run(t.id, t.title, null, t.created_at)
+  db.prepare('INSERT INTO chat_threads (id, title, sdk_session, created_at, uid) VALUES (?, ?, ?, ?, ?)').run(t.id, t.title, null, t.created_at, uid())
   mirror.touch('chat_threads', t.id)
   return t
 }
 
 export function setThreadSession(id: string, session: string, account: string) {
-  db.prepare('UPDATE chat_threads SET sdk_session = ?, sdk_account = ? WHERE id = ?').run(session, account, id)
+  db.prepare('UPDATE chat_threads SET sdk_session = ?, sdk_account = ? WHERE id = ? AND uid = ?').run(session, account, id, uid())
   mirror.touch('chat_threads', id)
 }
 
@@ -268,7 +278,8 @@ export function threadHistory(threadId: string, excludeId?: string, n = 12): str
 }
 
 export function threadMessages(threadId: string): ChatMessage[] {
-  const rows = db.prepare('SELECT * FROM chat_messages WHERE thread_id = ? ORDER BY at').all(threadId) as {
+  // Messages are reached through a thread, so the thread has to be the user's own.
+  const rows = db.prepare('SELECT m.* FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.thread_id = ? AND t.uid = ? ORDER BY m.at').all(threadId, uid()) as {
     id: string; role: ChatMessage['role']; text: string; tools: string | null; at: string
   }[]
   return rows.map((r) => ({ id: r.id, role: r.role, text: r.text, tools: r.tools ? JSON.parse(r.tools) : undefined, at: r.at }))
@@ -334,4 +345,71 @@ export function getState(jobs: AppState['jobs']): AppState {
     activity: recentActivity(),
     jobs,
   }
+}
+
+// ---------- users ----------
+
+export interface User { id: number; email: string; name: string; salt: string; hash: string; admin: number; created_at: string }
+export type PublicUser = { id: number; email: string; name: string; admin: boolean }
+
+export const publicUser = (u: User): PublicUser => ({ id: u.id, email: u.email, name: u.name, admin: Boolean(u.admin) })
+export const normEmail = (e: string) => e.trim().toLowerCase()
+
+export function userCount(): number {
+  return (db.prepare('SELECT count(*) AS n FROM users').get() as { n: number }).n
+}
+
+export function getUser(id: number): User | undefined {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined
+}
+
+export function userByEmail(email: string): User | undefined {
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(normEmail(email)) as User | undefined
+}
+
+/** The first account is the admin: it manages settings and Claude accounts, and keeps the board from before accounts existed. */
+export function createUser(u: { email: string; name: string; salt: string; hash: string }): User {
+  const first = userCount() === 0
+  const info = db
+    .prepare('INSERT INTO users (email, name, salt, hash, admin, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(normEmail(u.email), u.name.trim(), u.salt, u.hash, first ? 1 : 0, now())
+  const id = Number(info.lastInsertRowid)
+  mirror.touch('users', id)
+  if (first) adoptOrphans(id)
+  return getUser(id)!
+}
+
+export function setUserPassword(id: number, salt: string, hash: string) {
+  db.prepare('UPDATE users SET salt = ?, hash = ? WHERE id = ?').run(salt, hash, id)
+  mirror.touch('users', id)
+}
+
+/** kv keys that were the single board's before accounts existed. */
+const LEGACY_KV = ['profile']
+
+/** Board rows without an owner (from before accounts, or restored that way) go to the given user, normally the first admin. */
+export function adoptOrphans(to?: number) {
+  const owner = to ?? (db.prepare('SELECT id FROM users ORDER BY admin DESC, id LIMIT 1').get() as { id: number } | undefined)?.id
+  if (!owner) return
+  let moved = 0
+  for (const t of USER_TABLES) {
+    const ids = (db.prepare(`SELECT id FROM ${t} WHERE uid IS NULL`).all() as { id: unknown }[]).map((r) => r.id)
+    if (!ids.length) continue
+    db.prepare(`UPDATE ${t} SET uid = ? WHERE uid IS NULL`).run(owner)
+    for (const k of ids) mirror.touch(t, k)
+    moved += ids.length
+  }
+  for (const k of LEGACY_KV) {
+    const r = db.prepare('SELECT v FROM kv WHERE k = ?').get(k) as { v: string } | undefined
+    if (!r) continue
+    const target = `u${owner}:${k}`
+    if (!db.prepare('SELECT 1 FROM kv WHERE k = ?').get(target)) {
+      db.prepare('INSERT INTO kv (k, v) VALUES (?, ?)').run(target, r.v)
+      mirror.touch('kv', target)
+    }
+    db.prepare('DELETE FROM kv WHERE k = ?').run(k)
+    mirror.touch('kv', k)
+    moved++
+  }
+  if (moved) console.log(`Moved ${moved} rows from before accounts to user ${owner}`)
 }

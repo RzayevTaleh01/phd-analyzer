@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  COLLS, currentThread, get, getSettings, getState, insert, list, logActivity, newThread, remove, setProfile, setSettings,
+  adoptOrphans, COLLS, currentThread, get, getSettings, getState, insert, list, logActivity, newThread, remove, setProfile, setSettings,
   threadMessages, update, COLL_MODULE, type Coll,
 } from './db'
 import { addClient, broadcast } from './events'
@@ -14,7 +14,8 @@ import { beginLogin, chatBusy, checkClaude, claudeState, listJobs, sendChat, sta
 import { cancelLogin, loginState, submitCode } from './agent/login'
 import { accountsView, activeAccount, addAccount, checkAccount, checkAll, publishAccounts, removeAccount, renameAccount, setActive } from './agent/accounts'
 import type { JobKind } from './agent/prompts'
-import { authRequired, guard, isAuthed, login, logout } from './auth'
+import { adminOnly, authInfo, changePassword, guard, login, logout, register } from './auth'
+import { uid } from './ctx'
 import { readPage } from './browser/read'
 import { browserStatus } from './browser/render'
 import { searchPortals, PORTALS, PORTAL_KEYS, portalOf } from './research/portals'
@@ -27,9 +28,11 @@ const app = express()
 // Behind Cloud Run's proxy: real client address and https for the login cookie.
 app.set('trust proxy', true)
 app.use(express.json({ limit: '4mb' }))
-app.get('/api/auth', (req, res) => res.json({ required: authRequired(), ok: isAuthed(req) }))
+app.get('/api/auth', authInfo)
+app.post('/api/auth/register', register)
 app.post('/api/auth/login', login)
 app.post('/api/auth/logout', logout)
+app.post('/api/auth/password', changePassword)
 app.use(guard)
 
 type H = (req: Request, res: Response) => unknown | Promise<unknown>
@@ -47,11 +50,12 @@ const num = (v: unknown) => (v === undefined || v === '' ? undefined : Number(v)
 
 // ---------- board ----------
 app.get('/api/state', h(() => getState(listJobs())))
-app.get('/api/events', (_req, res) => addClient(res))
+app.get('/api/events', (_req, res) => addClient(res, uid()))
 
 app.put('/api/profile', h((req) => setProfile(req.body)))
-app.get('/api/settings', h(() => getSettings()))
-app.put('/api/settings', h((req) => setSettings(req.body)))
+// Settings are server-wide (model, keys, browser): the admin's to read and change.
+app.get('/api/settings', adminOnly, h(() => getSettings()))
+app.put('/api/settings', adminOnly, h((req) => setSettings(req.body)))
 
 app.get('/api/items/:coll/:id', h((req, res) => {
   const c = String(req.params.coll)
@@ -171,34 +175,34 @@ app.post('/api/universities/resolve', h(async (req) => {
 // ---------- Claude ----------
 app.get('/api/claude', h(async (req) => (req.query.refresh ? checkClaude(true) : claudeState())))
 app.get('/api/claude/login', h(() => loginState()))
-app.post('/api/claude/login', h((req) => beginLogin(req.body?.accountId)))
+app.post('/api/claude/login', adminOnly, h((req) => beginLogin(req.body?.accountId)))
 
 // ---------- Claude accounts ----------
 app.get('/api/accounts', h(() => accountsView()))
-app.post('/api/accounts', h((req) => {
+app.post('/api/accounts', adminOnly, h((req) => {
   const acc = addAccount(req.body?.label)
   return { account: acc, login: beginLogin(acc.id) }
 }))
-app.post('/api/accounts/:id/activate', h((req) => {
+app.post('/api/accounts/:id/activate', adminOnly, h((req) => {
   setActive(String(req.params.id))
   return accountsView()
 }))
-app.post('/api/accounts/:id/check', h(async (req) => {
+app.post('/api/accounts/:id/check', adminOnly, h(async (req) => {
   await checkAccount(String(req.params.id))
   return accountsView()
 }))
-app.patch('/api/accounts/:id', h((req) => {
+app.patch('/api/accounts/:id', adminOnly, h((req) => {
   renameAccount(String(req.params.id), String(req.body?.label ?? ''))
   return accountsView()
 }))
-app.delete('/api/accounts/:id', h((req, res) => (removeAccount(String(req.params.id)) ? accountsView() : res.status(400).json({ error: 'This account cannot be removed' }))))
-app.put('/api/accounts/auto-switch', h((req) => {
+app.delete('/api/accounts/:id', adminOnly, h((req, res) => (removeAccount(String(req.params.id)) ? accountsView() : res.status(400).json({ error: 'This account cannot be removed' }))))
+app.put('/api/accounts/auto-switch', adminOnly, h((req) => {
   setSettings({ autoSwitch: Boolean(req.body?.on) })
   publishAccounts()
   return accountsView()
 }))
-app.post('/api/claude/login/code', h((req) => submitCode(String(req.body?.code ?? ''))))
-app.post('/api/claude/login/cancel', h(() => {
+app.post('/api/claude/login/code', adminOnly, h((req) => submitCode(String(req.body?.code ?? ''))))
+app.post('/api/claude/login/cancel', adminOnly, h(() => {
   cancelLogin()
   return loginState()
 }))
@@ -250,10 +254,11 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: err.message })
 })
 
-// Local only: the server can run research agents and open a login terminal.
-// Local only by default (the server runs agents with your Claude login); HOST=0.0.0.0 in the container, behind APP_PASSWORD.
+// Local only by default (the server runs agents with your Claude login); HOST=0.0.0.0 in the container.
 const HOST = process.env.HOST || '127.0.0.1'
-if (HOST !== '127.0.0.1' && HOST !== 'localhost' && !authRequired()) console.warn('WARNING: the server is listening on a public address but APP_PASSWORD is not set')
+if (HOST !== '127.0.0.1' && HOST !== 'localhost') console.warn('NOTE: the server is listening on a public address: anyone who can open it can create an account')
+// Board rows from before accounts (or restored without an owner) belong to the first account.
+adoptOrphans()
 app.listen(PORT, HOST, () => {
   console.log(`PhD Analyzer (Talvis): http://localhost:${PORT}`)
   void checkAll().then(() => {

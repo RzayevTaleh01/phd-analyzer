@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { query, type SDKRateLimitInfo } from '@anthropic-ai/claude-agent-sdk'
 import { DATA_DIR, getSettings, kvGet, kvSet, logActivity } from '../db'
-import { broadcast } from '../events'
+import { broadcastAll as broadcast } from '../events'
 
 export const AGENT_CWD = path.join(DATA_DIR, 'agent')
 fs.mkdirSync(AGENT_CWD, { recursive: true })

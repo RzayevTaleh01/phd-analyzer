@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check, Plus, Save, Search, ShieldAlert, ShieldCheck } from 'lucide-react'
-import AccountsSection from './Accounts'
 import type { Deadline, Doc, Profile, Task, University } from '../../../shared/types'
-import { api, items, type InstitutionHit, type Settings } from '../api'
+import { api, items, type InstitutionHit } from '../api'
 import { statusLabel, dayLabel, daysUntil, fmtDate, todayISO, urgency } from '../lib/util'
 import { useStore } from '../store'
 import { byAdmitChance, CONDITIONS, COUNTRY_SUGGESTIONS, CONDITION_BY_KEY, DIRECTION_SUGGESTIONS, LANG_CERT_LABEL, RANKING_LIMITS, RANKING_SYSTEMS, rankingLabel } from '../../../shared/criteria'
@@ -17,14 +16,12 @@ export function ProfilePanel() {
   const { state, toast } = useStore()
   const [p, setP] = useState<Profile>(state.profile)
   const [dirty, setDirty] = useState(false)
-  const [s, setS] = useState<Settings | null>(null)
   // Only reset the form when the saved profile changes, not on every board refresh.
   useEffect(() => {
     setP(state.profile)
     setDirty(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.profile.updatedAt])
-  useEffect(() => void api<Settings>('/settings').then(setS), [])
   const set = <K extends keyof Profile>(k: K, v: Profile[K]) => {
     setP((x) => ({ ...x, [k]: v }))
     setDirty(true)
@@ -110,89 +107,7 @@ export function ProfilePanel() {
         <p className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>Your citizenship and the language of your previous education decide whether a language certificate waiver applies to you.</p>
       </div>
 
-      <div className="section-label" style={{ margin: '22px 0 12px' }} id="claude-accounts">Claude accounts</div>
-      <AccountsSection />
-      <p className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>
-        Talvis works with your Claude subscriptions (no API key needed). Each account is stored in its own folder on this computer.
-      </p>
-
-      {s && (
-        <>
-          <div className="section-label" style={{ margin: '22px 0 12px' }}>Settings</div>
-          <div className="grid3">
-            <Field label="Model">
-              <select className="select" value={s.model} onChange={(e) => setS({ ...s, model: e.target.value })}>
-                <option value="claude-opus-5-5">Claude Opus 5.5 (recommended)</option>
-                <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (fast)</option>
-                <option value="claude-fable-5-1">Claude Fable 5.1 (most capable)</option>
-                <option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option>
-              </select>
-            </Field>
-            <Field label="Board language">
-              <input className="input" value={s.language} placeholder="English" title="Language of the notes, analyses and reports Talvis saves. In the chat it answers in the language you write in." onChange={(e) => setS({ ...s, language: e.target.value })} />
-            </Field>
-            <Field label="Chat effort">
-              <select className="select" value={s.chatEffort} onChange={(e) => setS({ ...s, chatEffort: e.target.value })}>
-                {['low', 'medium', 'high', 'xhigh'].map((x) => <option key={x}>{x}</option>)}
-              </select>
-            </Field>
-            <Field label="Research job effort">
-              <select className="select" value={s.jobEffort} onChange={(e) => setS({ ...s, jobEffort: e.target.value })}>
-                {['medium', 'high', 'xhigh', 'max'].map((x) => <option key={x}>{x}</option>)}
-              </select>
-            </Field>
-            <Field label="OpenAlex API key (free)"><input className="input" type="password" value={s.openalexKey} onChange={(e) => setS({ ...s, openalexKey: e.target.value })} /></Field>
-            <Field label="Semantic Scholar key (optional)"><input className="input" type="password" value={s.s2Key} onChange={(e) => setS({ ...s, s2Key: e.target.value })} /></Field>
-            <Field label="OpenAlex mailto (optional)"><input className="input" value={s.mailto} onChange={(e) => setS({ ...s, mailto: e.target.value })} /></Field>
-            <Field label="Browser for JS-heavy sites">
-              <select className="select" value={s.browser} onChange={(e) => setS({ ...s, browser: e.target.value })}>
-                <option value="auto">Automatic (Edge, then Chrome)</option>
-                <option value="msedge">Microsoft Edge</option>
-                <option value="chrome">Google Chrome</option>
-                <option value="chromium">Chromium (npm run browser:install)</option>
-              </select>
-            </Field>
-            <Field label="Reddit app client id (optional)"><input className="input" value={s.redditClientId} onChange={(e) => setS({ ...s, redditClientId: e.target.value })} /></Field>
-            <Field label="Reddit app secret"><input className="input" type="password" value={s.redditSecret} onChange={(e) => setS({ ...s, redditSecret: e.target.value })} /></Field>
-          </div>
-          <div className="section-label" style={{ margin: '16px 0 10px' }}>Optional: TRDesk task manager</div>
-          <div className="grid3">
-            <Field label="TRDesk key (trd_...)"><input className="input" type="password" value={s.trdeskKey} onChange={(e) => setS({ ...s, trdeskKey: e.target.value })} /></Field>
-            <Field label="TRDesk URL"><input className="input" value={s.trdeskUrl} placeholder="https://your-trdesk-address" onChange={(e) => setS({ ...s, trdeskUrl: e.target.value })} /></Field>
-            <Field label="TRDesk plan (name or id)"><input className="input" value={s.trdeskPlan} placeholder="PhD plan" onChange={(e) => setS({ ...s, trdeskPlan: e.target.value })} /></Field>
-          </div>
-          <p className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>Leave the key empty if you do not use TRDesk: it then stays hidden and Talvis does not use it.</p>
-          <label className="faint row" style={{ gap: 6, fontSize: 12, margin: '4px 0 8px' }}>
-            <input type="checkbox" checked={s.browserVisible} onChange={(e) => setS({ ...s, browserVisible: e.target.checked })} /> Show the browser window (for checking; it normally runs in the background)
-            <BrowserCheck />
-          </label>
-          <p className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>
-            Reddit works without a key (public RSS), but the limit is small and score/comment counts are not shown. Free "script" app: <Ext href="https://www.reddit.com/prefs/apps">reddit.com/prefs/apps</Ext> → paste the client id and secret here.
-          </p>
-          <p className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>
-            OpenAlex works without a key, but the free daily limit per IP is small. Free key: <Ext href="https://openalex.org/settings/api">openalex.org/settings/api</Ext>
-          </p>
-          <button className="btn" onClick={() => api('/settings', { method: 'PUT', body: s }).then(() => toast('Settings saved'))}><Save size={13} /> Save settings</button>
-        </>
-      )}
     </>
-  )
-}
-
-function BrowserCheck() {
-  const [st, setSt] = useState<{ ok: boolean; version?: string; error?: string } | null>(null)
-  const [busy, setBusy] = useState(false)
-  const check = () => {
-    setBusy(true)
-    api<{ ok: boolean; version?: string; error?: string }>('/browser/status')
-      .then(setSt)
-      .finally(() => setBusy(false))
-  }
-  return (
-    <span className="row" style={{ gap: 6, marginLeft: 'auto' }}>
-      {st && <span className={`chip ${st.ok ? 'green' : 'red'}`} title={st.error}>{st.ok ? `browser ready ${st.version ?? ''}` : 'browser not found'}</span>}
-      <button className="btn sm ghost" onClick={(e) => (e.preventDefault(), check())}>{busy ? <Spinner /> : null} Check</button>
-    </span>
   )
 }
 

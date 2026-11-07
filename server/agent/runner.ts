@@ -2,6 +2,7 @@ import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options, type SDKMessage, t
 import type { ChatMessage, Job, ModuleKey } from '../../shared/types'
 import { CONDITION_BY_KEY } from '../../shared/criteria'
 import { currentThread, get, getProfile, getSettings, list, logActivity, noteUrls, saveMessage, setThreadSession, threadHistory, update } from '../db'
+import { uid } from '../ctx'
 import { broadcast } from '../events'
 import * as oa from '../research/openalex'
 import {
@@ -37,7 +38,8 @@ function baseOptions(o: {
     systemPrompt: [trdeskOn ? `${CORE_PROMPT}\n\n${TRDESK_PROMPT}` : CORE_PROMPT, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, dynamic],
     tools: ['WebSearch', 'WebFetch'],
     allowedTools: ['WebSearch', 'WebFetch', ...PHD_TOOL_NAMES.filter((n) => trdeskOn || !n.startsWith('mcp__phd__trdesk_'))],
-    mcpServers: { phd: phdServer(trdeskOn) },
+    // The board tools always act for the user this chat or job belongs to.
+    mcpServers: { phd: phdServer(trdeskOn, uid()) },
     permissionMode: 'dontAsk',
     settingSources: [],
     strictMcpConfig: true,
@@ -170,18 +172,20 @@ export async function withFailover(
 
 // ---------- chat ----------
 
-let chatAbort: AbortController | null = null
+// One running chat answer per user.
+const chatAborts = new Map<number, AbortController>()
 
 export function chatBusy() {
-  return chatAbort !== null
+  return chatAborts.has(uid())
 }
 
 export function stopChat() {
-  chatAbort?.abort()
+  chatAborts.get(uid())?.abort()
 }
 
 export async function sendChat(text: string, directionId?: number): Promise<void> {
-  if (chatAbort) throw new Error('busy')
+  const me = uid()
+  if (chatAborts.has(me)) throw new Error('busy')
   const thread = currentThread()
   // Links the user pastes count as known sources.
   noteUrls(text)
@@ -190,8 +194,8 @@ export async function sendChat(text: string, directionId?: number): Promise<void
   broadcast('chat', { kind: 'message', message: user })
   const reply: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', text: '', tools: [], at: new Date().toISOString() }
   broadcast('chat', { kind: 'start', message: reply })
-  chatAbort = new AbortController()
-  const abort = chatAbort
+  const abort = new AbortController()
+  chatAborts.set(me, abort)
   const s = getSettings()
   const dir = directionId ? get('directions', directionId) : undefined
   const focus = dir ? `the user is viewing the board filtered to direction group [A${dir.id}] ${dir.name}` : undefined
@@ -232,7 +236,7 @@ export async function sendChat(text: string, directionId?: number): Promise<void
   } catch (e) {
     say(`${reply.text ? '\n\n' : ''}${abort.signal.aborted ? 'Stopped.' : friendlyError((e as Error).message)}`)
   } finally {
-    chatAbort = null
+    chatAborts.delete(me)
     for (const t of reply.tools ?? []) if (t.status === 'running') t.status = 'done'
     saveMessage(thread.id, reply)
     broadcast('chat', { kind: 'done', message: reply })
@@ -241,7 +245,8 @@ export async function sendChat(text: string, directionId?: number): Promise<void
 
 // ---------- background jobs ----------
 
-const jobs = new Map<string, Job & { abort?: AbortController }>()
+type RunningJob = Job & { abort?: AbortController; uid: number }
+const jobs = new Map<string, RunningJob>()
 const JOB_MODULE: Record<JobKind, ModuleKey> = {
   find_universities: 'universities',
   gap_analysis: 'gaps',
@@ -256,20 +261,24 @@ const JOB_MODULE: Record<JobKind, ModuleKey> = {
   setup_directions: 'directions',
 }
 
+/** The current user's jobs, newest first. */
 export function listJobs(): Job[] {
+  const me = uid()
   return [...jobs.values()]
+    .filter((j) => j.uid === me)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     .slice(0, 20)
-    .map(({ abort: _a, ...j }) => j)
+    .map(({ abort: _a, uid: _u, ...j }) => j)
 }
 
-function publishJob(j: Job) {
-  const { abort: _a, ...pub } = j as Job & { abort?: AbortController }
-  broadcast('job', pub)
+function publishJob(j: RunningJob) {
+  const { abort: _a, uid: to, ...pub } = j
+  broadcast('job', pub, to)
 }
 
 export function stopJob(id: string) {
-  jobs.get(id)?.abort?.abort()
+  const j = jobs.get(id)
+  if (j?.uid === uid()) j.abort?.abort()
 }
 
 async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promise<{ title: string; prompt: string }> {
@@ -409,8 +418,8 @@ async function buildJobPrompt(kind: JobKind, p: Record<string, unknown>): Promis
 
 export function startJob(kind: JobKind, params: Record<string, unknown>): string {
   const id = crypto.randomUUID().slice(0, 8)
-  const job: Job & { abort?: AbortController } = {
-    id, kind, title: kind, module: JOB_MODULE[kind], status: 'running', progress: 'Preparing...', startedAt: new Date().toISOString(), abort: new AbortController(),
+  const job: RunningJob = {
+    id, kind, title: kind, module: JOB_MODULE[kind], status: 'running', progress: 'Preparing...', startedAt: new Date().toISOString(), abort: new AbortController(), uid: uid(),
   }
   jobs.set(id, job)
   publishJob(job)
@@ -418,7 +427,7 @@ export function startJob(kind: JobKind, params: Record<string, unknown>): string
   return id
 }
 
-async function runJob(job: Job & { abort?: AbortController }, params: Record<string, unknown>) {
+async function runJob(job: RunningJob, params: Record<string, unknown>) {
   const s = getSettings()
   try {
     const { title, prompt } = await buildJobPrompt(job.kind as JobKind, params)

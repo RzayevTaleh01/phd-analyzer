@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppState, ChatMessage, Job, ModuleKey } from '../../shared/types'
-import { filterState } from '../../shared/directions'
+import { directionColor, filterState } from '../../shared/directions'
 import { api, emptyState } from './api'
 
-export type ViewMode = 'modules' | 'graph'
+export type ViewMode = 'modules' | 'graph' | 'universities' | 'directions' | 'library'
 
 export interface ClaudeState {
   state: 'checking' | 'connected' | 'login_required' | 'error'
@@ -79,6 +79,12 @@ interface Store {
   toastText: string | null
 }
 
+const VIEWS: ViewMode[] = ['modules', 'graph', 'universities', 'directions', 'library']
+function viewFromHash(): ViewMode {
+  const h = window.location.hash.replace(/^#\/?/, '') as ViewMode
+  return VIEWS.includes(h) ? h : 'modules'
+}
+
 const Ctx = createContext<Store | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -89,7 +95,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [thinking, setThinking] = useState(false)
   const [live, setLive] = useState<Partial<Record<ModuleKey, number>>>({})
   const [expanded, setExpanded] = useState<ModuleKey | null>(null)
-  const [view, setView] = useState<ViewMode>('modules')
+  // The open page lives in the URL hash (#/universities), so reload and the back button keep it.
+  const [view, setViewRaw] = useState<ViewMode>(viewFromHash)
+  useEffect(() => {
+    const onHash = () => setViewRaw(viewFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  const setView = useCallback((v: ViewMode) => {
+    setViewRaw(v)
+    const h = v === 'modules' ? '' : `#/${v}`
+    if (window.location.hash !== h) window.history.pushState(null, '', h || window.location.pathname)
+  }, [])
   const [claudeInfo, setClaudeInfo] = useState<ClaudeState>({ state: 'checking' })
   const [loginState, setLoginState] = useState<LoginState>({ phase: 'idle' })
   const [accounts, setAccounts] = useState<AccountsView>({ accounts: [], activeId: 'main', autoSwitch: true })
@@ -134,7 +151,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(() => {
     api<AppState>('/state')
       .then((s) => {
-        setState(s)
+        setState({ ...s, directions: s.directions.map((d) => ({ ...d, color: directionColor(d.color) })) })
         setLoaded(true)
         setOnline(true)
       })

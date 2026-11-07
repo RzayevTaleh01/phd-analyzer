@@ -91,7 +91,7 @@ Open <http://localhost:5179>, click **Connect to Claude**, sign in, paste the co
 
 | Module | Stores | Main actions |
 |---|---|---|
-| **Profile** | Research interests, countries, ranking limit, conditions, citizenship, education, background | Group interests, find universities, Claude accounts, settings |
+| **Profile** | Research interests, countries, ranking limit, conditions, citizenship, education, background | Group interests, find universities |
 | **Directions** | Direction groups (keywords, status, your interest 1-5), evidence-based fit analysis | Compare all, analyse one, filter the board |
 | **Universities** | Ranking and language rule (with sources), fit note, admission chance, status | AI search, search by name, estimate chances, Scout, deadlines, Reddit |
 | **PhD positions** | Portal listings: university, funding, supervisor, deadline | Portal search, scan all portals |
@@ -313,7 +313,7 @@ flowchart LR
 
 ## Configuration
 
-### Settings (in the app: Profile → Settings)
+### Settings (in the app: the gear button in the top bar)
 
 | Setting | Options | Default |
 |---|---|---|
@@ -335,7 +335,7 @@ flowchart LR
 | `PORT` | `5179` | Server port |
 | `HOST` | `127.0.0.1` | Listen address (`0.0.0.0` in the container) |
 | `PHD_DATA_DIR` | `./data` | Data folder |
-| `APP_PASSWORD` | - | Requires a password for the app (not for `/docs`) |
+| `SESSION_SECRET` | random, stored in the database | Signs the 30-day session cookies |
 | `DATABASE_URL` | - | PostgreSQL mirror of the board and server-side Claude logins |
 | `PHD_USE_API_KEY` | - | `1` = use `ANTHROPIC_API_KEY` instead of a subscription |
 
@@ -382,7 +382,7 @@ flowchart LR
 | POST | `/jobs`, `/jobs/:id/stop` | Start / stop a background job |
 | GET / POST | `/claude`, `/claude/login`, `/claude/login/code`, `/claude/login/cancel` | Claude status and in-app sign-in |
 | GET / POST / PATCH / DELETE | `/accounts[/:id]`, `/accounts/:id/activate`, `/accounts/:id/check`, `/accounts/auto-switch` | Claude accounts |
-| GET / POST | `/auth`, `/auth/login`, `/auth/logout` | Password login when `APP_PASSWORD` is set |
+| GET / POST | `/auth`, `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/password` | Accounts: each has its own board; the first is the admin |
 | GET / POST / PUT | `/trdesk/upcoming`, `/trdesk/sync`, `/trdesk/tasks/:id/done` | Optional TRDesk integration |
 
 </details>
@@ -403,7 +403,7 @@ The script asks once for the Postgres connection string and the login password, 
 |---|---|
 | Data | With `DATABASE_URL`, `server/start.ts` fills a local SQLite working copy from Postgres on start and `server/pgsync.ts` mirrors every write back within about a second. Run one instance per database |
 | Logins | Claude sign-ins made on the server (`data/accounts/*`) are backed up to Postgres, so restarts keep you signed in |
-| Access | With `APP_PASSWORD`, every `/api` route needs the login cookie (30 days, httpOnly); 8 wrong tries per 10 minutes per address |
+| Access | Every `/api` route except `/api/auth*` needs a signed-in account (signed httpOnly cookie, 30 days; passwords stored as scrypt hashes; 8 failed tries per 10 minutes per address). Each request runs as its account (`server/ctx.ts`), and every board table carries a `uid`. Settings and Claude accounts are admin-only. Anyone who can open the app can create an account |
 | Cost | Scales to zero; billed while a browser tab keeps the live event stream open |
 
 ---

@@ -12,6 +12,7 @@ export const COLLECTION_TABLES = [
 export const DURABLE_TABLES: Record<string, string> = {
   ...Object.fromEntries(COLLECTION_TABLES.map((t) => [t, 'id'])),
   kv: 'k',
+  users: 'id',
   activity: 'id',
   chat_threads: 'id',
   chat_messages: 'id',
@@ -28,8 +29,17 @@ export function createSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, tools TEXT, at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS api_cache (k TEXT PRIMARY KEY, body TEXT NOT NULL, at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS seen_urls (url TEXT PRIMARY KEY, at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, salt TEXT NOT NULL, hash TEXT NOT NULL, admin INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
   `)
   // Sessions live in each account's Claude folder, so remember which account a session belongs to.
   if (!(db.prepare('PRAGMA table_info(chat_threads)').all() as { name: string }[]).some((c) => c.name === 'sdk_account'))
     db.exec('ALTER TABLE chat_threads ADD COLUMN sdk_account TEXT')
+  // Every board row belongs to one user (rows from before accounts existed get the first account: see adoptOrphans).
+  for (const t of USER_TABLES) {
+    if (!(db.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).some((c) => c.name === 'uid')) db.exec(`ALTER TABLE ${t} ADD COLUMN uid INTEGER`)
+    db.exec(`CREATE INDEX IF NOT EXISTS ${t}_uid ON ${t} (uid)`)
+  }
 }
+
+/** Tables whose rows belong to one user. kv keys of a user start with u<id>: (see db.ts ukey). */
+export const USER_TABLES = [...COLLECTION_TABLES, 'activity', 'chat_threads'] as const

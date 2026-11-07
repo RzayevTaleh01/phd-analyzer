@@ -138,7 +138,7 @@ Anything lasting you tell it (a topic, a target university, a deadline, a profes
 
 | Module | What it stores | Main actions |
 |---|---|---|
-| **Profile** | Research interests, target countries, ranking limit, conditions, name, field, stage, target intake, citizenship, education, background | Group interests into directions, find universities, Claude accounts, settings |
+| **Profile** | Research interests, target countries, ranking limit, conditions, name, field, stage, target intake, citizenship, education, background | Group interests into directions, find universities |
 | **Directions** | Direction groups (name, description, keywords, status, your interest 1-5) and Talvis' evidence-based fit analysis | Compare all groups, analyse one, edit keywords, filter the board |
 | **Universities** | University, country, ranking (with source), language-test rule (with source), fit note, **admission chance**, status, researchers, next deadline | AI search by criteria, search by name, estimate admission chances, Scout, check deadlines, Reddit analysis |
 | **PhD positions** | Positions and programmes from portals: university, funding, supervisor, deadline, status | Search portals, scan all portals for your profile, save, shortlist |
@@ -233,7 +233,7 @@ Every score comes with a one-line reason and evidence (board IDs or links).
 
 ## 9. Settings
 
-Open **Profile → Settings**.
+Click the **settings (gear) button** in the top bar.
 
 | Setting | Options | Default |
 |---|---|---|
@@ -254,7 +254,7 @@ Open **Profile → Settings**.
 
 ## 10. Claude accounts
 
-Open **Profile → Claude accounts** or click **CLAUDE** in the header.
+Click **Claude** in the top bar.
 
 - **Account 1** is this computer's default Claude sign-in. **Add account** adds more; each is stored separately under `data/accounts/`.
 - For each account you see the plan, email, 5-hour and 7-day usage, and when a reached limit resets.
@@ -289,7 +289,9 @@ Only add accounts you own; every account is subject to Anthropic's terms.
 
 You can host the app (for example on Google Cloud Run) and open it from anywhere:
 
-- Set `APP_PASSWORD`: everything except this guide (`/docs`) then needs the password, with a 30-day login cookie.
+- Everyone signs in with their own account and gets their own board: universities, papers, tasks, chat and jobs are never shared. Visitors who are signed out see the welcome page first, then **Sign in** or **Create account**; creating an account also asks for research interests, field, stage and target countries, which fill the new board's profile.
+- The first account is the **admin**: it keeps the board that existed before accounts, and only it changes Settings (model, keys, browser, TRDesk) and the Claude accounts everyone's Talvis runs on.
+- Anyone who can open the address can create an account, and every account's Talvis runs on the admin's Claude subscription. Sessions last 30 days; **Sign out** is in the navbar and in Settings → Your account, where you can also change your password.
 - Set `DATABASE_URL` to a PostgreSQL database: the board and the Claude sign-ins made on the server are kept there, so restarts lose nothing. Run one instance per database.
 - `deploy.ps1 -Project <your-gcp-project>` builds and deploys the container and stores both secrets in Secret Manager.
 

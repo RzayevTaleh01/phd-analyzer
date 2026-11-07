@@ -32,7 +32,13 @@ export function overallScore(scores: Partial<Record<string, { score: number }>> 
   return w ? Math.round((sum / w) * 10) / 10 : undefined
 }
 
-export const DIRECTION_COLORS = ['#2fd8ff', '#a594ff', '#45f0a4', '#ffb547', '#ff7ab6', '#93ecff']
+export const DIRECTION_COLORS = ['#2563eb', '#7c3aed', '#15803d', '#d97706', '#db2777', '#0891b2']
+
+// Directions saved before the light theme carry neon colours; show them as the matching colour of the new palette.
+const LEGACY_COLORS: Record<string, string> = {
+  '#2fd8ff': '#2563eb', '#a594ff': '#7c3aed', '#45f0a4': '#15803d', '#ffb547': '#d97706', '#ff7ab6': '#db2777', '#93ecff': '#0891b2',
+}
+export const directionColor = (c?: string): string => (c && LEGACY_COLORS[c.toLowerCase()]) || c || DIRECTION_COLORS[0]
 
 // ---------- which items belong to which direction ----------
 

@@ -1,6 +1,6 @@
 # PhD Analyzer -> Google Cloud Run. Details: README "Deploy to Google Cloud Run" and docs/GUIDE.md.
 # Run:  powershell -ExecutionPolicy Bypass -File deploy.ps1 -Project <your-gcp-project> [-Region us-east4] [-Service phd-analyzer]
-# The first run asks for the Postgres connection string and a login password and keeps them in Secret Manager.
+# The first run asks for the Postgres connection string and keeps it in Secret Manager. Accounts are created in the app.
 param(
   [Parameter(Mandatory = $true)][string]$Project,
   [string]$Region = 'us-east4',
@@ -34,11 +34,10 @@ function Ensure-Secret([string]$name, [string]$prompt, [bool]$hidden) {
 }
 
 Ensure-Secret "$Service-database-url" 'Postgres connection string (postgresql://...)' $false
-Ensure-Secret "$Service-app-password" 'Login password for the app' $true
 
 gcloud run deploy $Service --project $Project --source . --region $Region `
   --memory 2Gi --cpu 1 --min-instances 0 --max-instances 1 --timeout 3600 --allow-unauthenticated `
-  --set-secrets "DATABASE_URL=$Service-database-url:latest,APP_PASSWORD=$Service-app-password:latest" --quiet
+  --set-secrets "DATABASE_URL=$Service-database-url:latest" --quiet
 if ($LASTEXITCODE -ne 0) { Write-Host 'ERROR: deploy failed (see the last build with: gcloud builds list --limit=1)'; exit 1 }
 
 $url = gcloud run services describe $Service --project $Project --region $Region --format 'value(status.url)'

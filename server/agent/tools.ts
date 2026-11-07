@@ -1,5 +1,6 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
+import { runAs } from '../ctx'
 import { CONDITIONS } from '../../shared/criteria'
 import type { ModuleKey } from '../../shared/types'
 import { COLLS, COLL_MODULE, get, insert, list, logActivity, normUrl, remove, setProfile, setSettings, update, wasSeen, type Coll } from '../db'
@@ -961,9 +962,13 @@ export const phdTools = [
 export const PHD_TOOL_NAMES = phdTools.map((t) => `mcp__phd__${t.name}`)
 
 /** TRDesk tools are left out unless the optional integration has a key. */
-export function phdServer(withTrdesk: boolean) {
-  return createSdkMcpServer({ name: 'phd', version: '0.1.0', tools: withTrdesk ? phdTools : phdTools.filter((t) => !t.name.startsWith('trdesk_')) })
+/** The board tools for one chat or job; every call runs as user `uid`, whatever context the SDK calls the handler from. */
+export function phdServer(withTrdesk: boolean, uid: number) {
+  const base: SdkMcpToolDefinition<any>[] = withTrdesk ? phdTools : phdTools.filter((t) => !t.name.startsWith('trdesk_')) // eslint-disable-line @typescript-eslint/no-explicit-any
+  const tools = base.map((t) => ({ ...t, handler: (args: Parameters<typeof t.handler>[0], extra: unknown) => runAs(uid, () => t.handler(args, extra)) }))
+  return createSdkMcpServer({ name: 'phd', version: '0.1.0', tools })
 }
+
 
 // ---------- UI metadata: which module a tool touches, and a readable label ----------
 
